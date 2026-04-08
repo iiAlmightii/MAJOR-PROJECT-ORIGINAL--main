@@ -13,6 +13,7 @@ from app.database import create_tables
 from app.routers import auth, users, videos, matches, analytics
 from app.routers import processing
 from app.routers import annotations as annotations_router
+from app.routers import training as training_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -123,6 +124,7 @@ app.include_router(matches.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(processing.router, prefix="/api")
 app.include_router(annotations_router.router, prefix="/api")
+app.include_router(training_router.router, prefix="/api")
 
 
 @app.get("/api/health")

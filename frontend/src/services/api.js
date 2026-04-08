@@ -107,6 +107,12 @@ export const annotationsAPI = {
   export: ()                => api.get('/annotations/export', { responseType: 'blob' }),
 }
 
+// ─── Training ─────────────────────────────────────────────────
+export const trainingAPI = {
+  status: () => api.get('/training/status'),
+  run:    (phase = 2) => api.post('/training/run', { phase }),
+}
+
 // ─── Analytics ────────────────────────────────────────
 export const analyticsAPI = {
   adminDashboard:  () => api.get('/analytics/dashboard/admin'),

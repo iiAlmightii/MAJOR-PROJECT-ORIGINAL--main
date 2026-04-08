@@ -403,9 +403,6 @@ class CVPipeline:
         from sqlalchemy import select
         import uuid
 
-        if not action_rows and not rallies:
-            return
-
         async with AsyncSessionLocal() as db:
             # Build data for scoring engine
             rally_dicts  = [r.to_dict() for r in rallies]
@@ -490,6 +487,18 @@ class CVPipeline:
                 }
 
             await db.commit()
+
+            # Write zero-stat Analytics rows for any player not in player_stats
+            written_pids = set(summary.get("player_stats", {}).keys())
+            for p in db_players:
+                if str(p.id) not in written_pids:
+                    db.add(Analytics(
+                        match_id=uuid.UUID(self.match_id),
+                        player_id=p.id,
+                        team=p.team,
+                    ))
+            await db.commit()
+
             logger.info(f"Scoring complete for match {self.match_id}")
 
     # ──────────────────────────────────────────────────────────────────────────

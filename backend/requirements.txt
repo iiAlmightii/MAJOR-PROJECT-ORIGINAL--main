@@ -1,0 +1,33 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+sqlalchemy==2.0.30
+alembic==1.13.1
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.9
+python-dotenv==1.0.1
+aiofiles==23.2.1
+Pillow==10.3.0
+opencv-python-headless==4.9.0.80
+numpy==1.26.4
+pydantic[email]==2.7.1
+pydantic-settings==2.2.1
+httpx==0.27.0
+pytest==8.2.0
+pytest-asyncio==0.23.6
+
+# ─── Phase 2: Computer Vision Pipeline ───────────────────────────────────────
+ultralytics==8.2.18
+supervision==0.21.0
+lap==0.4.0
+scipy==1.13.1
+# torch + torchvision: install separately for your CUDA version
+# CPU fallback (included via ultralytics auto-install):
+# torch>=2.0.0  torchvision>=0.15.0
+
+# ─── Phase 3: Action Recognition ─────────────────────────────────────────────
+rtmlib>=0.0.13          # RTMPose keypoint extraction (auto-downloads ONNX weights)
+mediapipe>=0.10.14      # Pose fallback if rtmlib not available
+onnxruntime>=1.18.0     # ONNX inference backend for rtmlib

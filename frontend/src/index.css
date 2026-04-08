@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    background-color: #1a1f2e;
+    color: #f1f5f9;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #1a1f2e; }
+  ::-webkit-scrollbar-thumb { background: #2e3a52; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply bg-court-panel border border-court-border hover:bg-court-border text-slate-200 font-medium px-4 py-2 rounded-lg transition-colors duration-200;
+  }
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-lg transition-colors duration-200;
+  }
+  .card {
+    @apply bg-court-panel border border-court-border rounded-xl p-5;
+  }
+  .input {
+    @apply bg-court-bg border border-court-border text-slate-200 placeholder-slate-500 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200;
+  }
+  .label {
+    @apply block text-sm font-medium text-slate-400 mb-1;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .status-pending    { @apply badge bg-yellow-900/40 text-yellow-400 border border-yellow-800/40; }
+  .status-processing { @apply badge bg-blue-900/40  text-blue-400  border border-blue-800/40;  }
+  .status-completed  { @apply badge bg-green-900/40 text-green-400 border border-green-800/40; }
+  .status-failed     { @apply badge bg-red-900/40   text-red-400   border border-red-800/40;   }
+  .status-uploaded   { @apply badge bg-slate-700/40 text-slate-300 border border-slate-600/40; }
+}
+
+/* Video overlay canvas */
+.video-wrapper {
+  position: relative;
+  background: #000;
+}
+.video-wrapper canvas {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+}
+
+/* Filter panel slide animation */
+.filter-panel-enter { transform: translateX(100%); }
+.filter-panel-enter-active {
+  transform: translateX(0);
+  transition: transform 300ms ease-out;
+}
+.filter-panel-exit { transform: translateX(0); }
+.filter-panel-exit-active {
+  transform: translateX(100%);
+  transition: transform 300ms ease-in;
+}

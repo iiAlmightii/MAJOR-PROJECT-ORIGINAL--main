@@ -28,9 +28,10 @@ def unregister_ws(match_id: str, send_fn) -> None:
         _ws_registry[match_id].discard(send_fn)
 
 
-async def _broadcast(match_id: str, pct: int, msg: str):
+async def _broadcast(match_id: str, pct: int, msg: str, failed: bool = False):
     """Send progress to every WS client watching this match."""
-    payload = f'{{"progress":{pct},"message":{msg!r}}}'
+    import json
+    payload = json.dumps({"progress": pct, "message": msg, "failed": failed})
     dead = set()
     for send_fn in list(_ws_registry.get(match_id, [])):
         try:
@@ -104,4 +105,4 @@ async def run_analysis(
                 from app.models.match import MatchStatus
                 m.status = MatchStatus.failed
                 await db.commit()
-        await _broadcast(match_id, -1, f"Analysis failed: {exc}")
+        await _broadcast(match_id, -1, f"Analysis failed: {exc}", failed=True)

@@ -17,11 +17,40 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def _check_cv_deps():
+    """Log which CV dependencies are available at startup."""
+    deps = {
+        "torch": False,
+        "ultralytics": False,
+        "supervision": False,
+        "mediapipe": False,
+        "rtmlib": False,
+        "cv2": False,
+    }
+    for name in deps:
+        try:
+            __import__(name)
+            deps[name] = True
+        except ImportError:
+            pass
+
+    available = [k for k, v in deps.items() if v]
+    missing   = [k for k, v in deps.items() if not v]
+
+    if available:
+        logger.info(f"CV deps available: {', '.join(available)}")
+    if missing:
+        logger.warning(
+            f"CV deps MISSING (analysis will be limited): {', '.join(missing)}"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Volleyball Analytics API...")
     await create_tables()
     await seed_admin()
+    _check_cv_deps()
     logger.info("Database tables ready.")
     yield
     logger.info("Shutting down...")

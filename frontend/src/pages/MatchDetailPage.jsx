@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronLeft, SlidersHorizontal, BarChart2, Loader2,
   Play, Zap, Users, AlertCircle, Wifi, WifiOff, Eye, EyeOff,
-  Activity, Shield, ArrowUp, Radio, Minus
+  Activity, Shield, ArrowUp, Radio, Minus, Tag
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { matchesAPI } from '../services/api'
@@ -387,6 +387,17 @@ export default function MatchDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Annotate button */}
+            {canAnalyze && (
+              <Link
+                to={`/matches/${match.id}/annotate`}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#2e3a52] hover:bg-[#3e4a62] text-slate-300 rounded-lg"
+              >
+                <Tag className="w-4 h-4" />
+                Annotate
+              </Link>
+            )}
+
             {/* Overlay toggle */}
             {match.status === 'completed' && (
               <button

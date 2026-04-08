@@ -99,6 +99,14 @@ export const matchesAPI = {
   actions:  (id, params) => api.get(`/matches/${id}/actions`, { params }),
 }
 
+// ─── Annotations ─────────────────────────────────────────────
+export const annotationsAPI = {
+  list:   (matchId)         => api.get(`/matches/${matchId}/annotations`),
+  create: (matchId, data)   => api.post(`/matches/${matchId}/annotations`, data),
+  delete: (id)              => api.delete(`/annotations/${id}`),
+  export: ()                => api.get('/annotations/export', { responseType: 'blob' }),
+}
+
 // ─── Analytics ────────────────────────────────────────
 export const analyticsAPI = {
   adminDashboard:  () => api.get('/analytics/dashboard/admin'),

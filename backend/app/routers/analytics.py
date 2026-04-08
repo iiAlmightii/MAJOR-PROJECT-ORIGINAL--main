@@ -321,6 +321,92 @@ async def get_leaderboard(
     ]
 
 
+@router.get("/players")
+async def list_all_players(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all players with analytics data for the compare dropdowns."""
+    from app.models.player import Player as PlayerModel
+
+    q = (
+        select(PlayerModel.id, PlayerModel.display_name, PlayerModel.player_track_id, PlayerModel.team, Match.title)
+        .join(Analytics, Analytics.player_id == PlayerModel.id)
+        .join(Match, Match.id == PlayerModel.match_id)
+        .where(Match.status == MatchStatus.completed)
+        .distinct()
+    )
+    if current_user.role != UserRole.admin:
+        q = q.where(Match.uploaded_by == current_user.id)
+
+    result = await db.execute(q)
+    rows = result.all()
+    return [
+        {
+            "id": str(r.id),
+            "name": r.display_name or f"Player #{r.player_track_id}",
+            "team": r.team or "?",
+            "match_title": r.title,
+        }
+        for r in rows
+    ]
+
+
+@router.get("/players/compare")
+async def player_comparison(
+    player_a: uuid.UUID,
+    player_b: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Head-to-head stat comparison for two players across all their matches."""
+    from app.models.player import Player as PlayerModel
+
+    async def fetch_player(pid: uuid.UUID):
+        p_result = await db.execute(
+            select(PlayerModel).where(PlayerModel.id == pid)
+        )
+        player = p_result.scalar_one_or_none()
+        if not player:
+            raise HTTPException(404, f"Player {pid} not found")
+
+        stats_result = await db.execute(
+            select(
+                func.coalesce(func.sum(Analytics.total_attacks), 0).label("attacks"),
+                func.coalesce(func.sum(Analytics.attack_kills), 0).label("kills"),
+                func.coalesce(func.avg(Analytics.attack_efficiency), 0.0).label("attack_eff"),
+                func.coalesce(func.sum(Analytics.total_serves), 0).label("serves"),
+                func.coalesce(func.sum(Analytics.aces), 0).label("aces"),
+                func.coalesce(func.avg(Analytics.serve_efficiency), 0.0).label("serve_eff"),
+                func.coalesce(func.sum(Analytics.total_blocks), 0).label("blocks"),
+                func.coalesce(func.sum(Analytics.block_points), 0).label("block_pts"),
+                func.coalesce(func.sum(Analytics.total_digs), 0).label("digs"),
+                func.coalesce(func.sum(Analytics.total_receptions), 0).label("receptions"),
+                func.coalesce(func.avg(Analytics.reception_efficiency), 0.0).label("reception_eff"),
+            ).where(Analytics.player_id == pid)
+        )
+        row = stats_result.one()
+        return {
+            "id": str(player.id),
+            "name": player.display_name or f"Player #{player.player_track_id}",
+            "team": player.team or "?",
+            "attacks": int(row.attacks),
+            "kills": int(row.kills),
+            "attack_eff": round(float(row.attack_eff) * 100, 1),
+            "serves": int(row.serves),
+            "aces": int(row.aces),
+            "serve_eff": round(float(row.serve_eff) * 100, 1),
+            "blocks": int(row.blocks),
+            "block_pts": int(row.block_pts),
+            "digs": int(row.digs),
+            "receptions": int(row.receptions),
+            "reception_eff": round(float(row.reception_eff) * 100, 1),
+        }
+
+    pa, pb = await fetch_player(player_a), await fetch_player(player_b)
+    return {"player_a": pa, "player_b": pb}
+
+
 @router.get("/match/{match_id}/compare")
 async def team_comparison(
     match_id: uuid.UUID,

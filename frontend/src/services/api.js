@@ -120,6 +120,8 @@ export const analyticsAPI = {
   playerDashboard: () => api.get('/analytics/dashboard/player'),
   leaderboard: (metric = 'attacks') => api.get('/analytics/leaderboard', { params: { metric } }),
   matchCompare: (matchId)           => api.get(`/analytics/match/${matchId}/compare`),
+  playerCompare: (a, b)             => api.get('/analytics/players/compare', { params: { player_a: a, player_b: b } }),
+  playersList:   ()                 => api.get('/analytics/players'),
   systemLogs:   (p)                 => api.get('/analytics/logs', { params: p }),
 }
 

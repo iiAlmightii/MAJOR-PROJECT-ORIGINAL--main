@@ -23,9 +23,9 @@ ultralytics==8.2.18
 supervision==0.21.0
 lap==0.4.0
 scipy==1.13.1
-# torch + torchvision: install separately for your CUDA version
-# CPU fallback (included via ultralytics auto-install):
-# torch>=2.0.0  torchvision>=0.15.0
+# torch CPU build — for GPU install: pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.0.0
+torchvision>=0.15.0
 
 # ─── Phase 3: Action Recognition ─────────────────────────────────────────────
 rtmlib>=0.0.13          # RTMPose keypoint extraction (auto-downloads ONNX weights)

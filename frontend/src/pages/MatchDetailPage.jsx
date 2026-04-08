@@ -283,7 +283,7 @@ export default function MatchDetailPage() {
 
   // ── WebSocket progress ─────────────────────────────────────────────────────
   const isProcessing = match?.status === 'processing'
-  const { progress: wsProgress, message: wsMsg, connected: wsConnected } =
+  const { progress: wsProgress, message: wsMsg, connected: wsConnected, failed: analysisFailed } =
     useAnalysisProgress(id, isProcessing)
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -473,6 +473,23 @@ export default function MatchDetailPage() {
               style={{ width: `${displayProgress}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {analysisFailed && (
+        <div className="flex items-center gap-3 p-4 bg-red-900/30 border border-red-700 rounded-lg">
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+          <div>
+            <div className="text-red-300 font-medium text-sm">Analysis Failed</div>
+            <div className="text-red-400/80 text-xs mt-0.5">{wsMsg}</div>
+          </div>
+        </div>
+      )}
+
+      {match.status === 'failed' && !analysisFailed && (
+        <div className="flex items-center gap-3 p-4 bg-red-900/30 border border-red-700 rounded-lg">
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+          <div className="text-red-300 text-sm">Analysis failed. Check server logs and re-run analysis.</div>
         </div>
       )}
 

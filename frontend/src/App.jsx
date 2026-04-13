@@ -13,6 +13,7 @@ import UsersPage from './pages/UsersPage'
 import ProfilePage from './pages/ProfilePage'
 import NotFoundPage from './pages/NotFoundPage'
 import AnnotatePage from './pages/AnnotatePage'
+import PlayerComparePage from './pages/PlayerComparePage'
 
 function RequireAuth({ children, roles }) {
   const { isAuthenticated, user } = useAuthStore()
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="matches/:id/annotate" element={<RequireAuth roles={['admin','coach']}><AnnotatePage /></RequireAuth>} />
         <Route path="upload"    element={<RequireAuth roles={['admin','coach']}><UploadPage /></RequireAuth>} />
         <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="analytics/compare" element={<PlayerComparePage />} />
         <Route path="users"     element={<RequireAuth roles={['admin']}><UsersPage /></RequireAuth>} />
         <Route path="profile"   element={<ProfilePage />} />
       </Route>

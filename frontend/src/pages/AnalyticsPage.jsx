@@ -9,6 +9,7 @@ import {
   Trophy, Shield, ArrowUp, Radio, Zap, ChevronUp, ChevronDown, Minus,
   Clock, Target,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { analyticsAPI } from '../services/api'
 import useAuthStore from '../store/authStore'
 
@@ -482,9 +483,18 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h2 className="text-2xl font-bold text-white">Analytics</h2>
-        <p className="text-slate-400 text-sm mt-1">Performance insights across all matches</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-white">Analytics</h2>
+          <p className="text-slate-400 text-sm mt-1">Performance insights across all matches</p>
+        </div>
+        <Link
+          to="/analytics/compare"
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          <Users className="w-4 h-4" />
+          Compare Players
+        </Link>
       </div>
 
       {isAdmin() && <AdminDashboard data={data} />}

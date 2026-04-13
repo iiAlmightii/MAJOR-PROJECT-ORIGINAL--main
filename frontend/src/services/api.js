@@ -96,7 +96,8 @@ export const matchesAPI = {
   analyze:  (id)      => api.post(`/matches/${id}/analyze`),
   rallies:  (id)      => api.get(`/matches/${id}/rallies`),
   analytics:(id)      => api.get(`/matches/${id}/analytics`),
-  actions:  (id, params) => api.get(`/matches/${id}/actions`, { params }),
+  actions:   (id, params) => api.get(`/matches/${id}/actions`,    { params }),
+  rotations: (id, params) => api.get(`/matches/${id}/rotations`, { params }),
 }
 
 // ─── Annotations ─────────────────────────────────────────────

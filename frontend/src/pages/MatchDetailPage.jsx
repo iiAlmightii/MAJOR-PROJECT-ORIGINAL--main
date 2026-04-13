@@ -11,6 +11,7 @@ import { matchesAPI } from '../services/api'
 import api from '../services/api'
 import VideoPlayer from '../components/Video/VideoPlayer'
 import FilterPanel from '../components/Video/FilterPanel'
+import RotationPanel from '../components/Video/RotationPanel'
 import useAuthStore from '../store/authStore'
 import { useTrackingData } from '../hooks/useTrackingData'
 import { useAnalysisProgress } from '../hooks/useAnalysisProgress'
@@ -234,12 +235,13 @@ export default function MatchDetailPage() {
   const userRole = useAuthStore((s) => s.user?.role)
   const canAnalyze = userRole === 'coach' || userRole === 'admin'
   const qc      = useQueryClient()
-  const [filterOpen,   setFilterOpen]   = useState(false)
-  const [filters,      setFilters]      = useState(DEFAULT_FILTERS)
-  const [currentTime,  setCurrentTime]  = useState(0)
-  const [activeTab,    setActiveTab]    = useState('overview')
-  const [showOverlay,  setShowOverlay]  = useState(true)
-  const [courtCorners, setCourtCorners] = useState(null) // for manual calibration
+  const [filterOpen,      setFilterOpen]      = useState(false)
+  const [filters,         setFilters]         = useState(DEFAULT_FILTERS)
+  const [currentTime,     setCurrentTime]     = useState(0)
+  const [activeTab,       setActiveTab]       = useState('overview')
+  const [showOverlay,     setShowOverlay]     = useState(true)
+  const [courtCorners,    setCourtCorners]    = useState(null)
+  const [selectedRallyId, setSelectedRallyId] = useState(null)
 
   // ── Data fetching ──────────────────────────────────────────────────────────
   const { data: match, isLoading: matchLoading } = useQuery({
@@ -270,6 +272,21 @@ export default function MatchDetailPage() {
     }).then(r => r.data),
     enabled: !!match && match.status === 'completed' && activeTab === 'actions',
   })
+
+  const { data: rotationsData } = useQuery({
+    queryKey: ['rotations', id],
+    queryFn:  () => matchesAPI.rotations(id).then(r => r.data),
+    enabled: !!match && match.status === 'completed' && activeTab === 'rallies',
+  })
+
+  // Map rally_id → rotation for quick lookup
+  const rotationByRallyId = useMemo(() => {
+    const map = {}
+    ;(rotationsData?.rotations || []).forEach(rot => {
+      if (rot.rally_id) map[rot.rally_id] = rot
+    })
+    return map
+  }, [rotationsData])
 
   // ── Live tracking overlay ──────────────────────────────────────────────────
   const { trackingData, fetchAtTime } = useTrackingData(
@@ -564,41 +581,59 @@ export default function MatchDetailPage() {
               <p className="text-slate-400 text-sm">No rallies match current filters</p>
             </div>
           ) : (
-            filteredRallies.map(r => (
-              <div key={r.id}
-                className="card flex items-center gap-4 hover:border-blue-600/40 transition-colors cursor-pointer"
-                onClick={() => {
-                  // Seek video to rally start
-                  const video = document.querySelector('video')
-                  if (video) video.currentTime = r.start_time
-                }}
-              >
-                <div className="w-9 h-9 bg-blue-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Play className="w-4 h-4 text-blue-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-slate-200">Rally #{r.rally_number}</div>
-                  <div className="text-xs text-slate-500">
-                    {new Date(r.start_time * 1000).toISOString().substr(11, 8)}
-                    {' → '}
-                    {new Date(r.end_time * 1000).toISOString().substr(11, 8)}
-                    {' · '}
-                    {(r.end_time - r.start_time).toFixed(1)}s
+            filteredRallies.map(r => {
+              const isSelected = selectedRallyId === r.id
+              const rotation   = rotationByRallyId[r.id] || null
+              return (
+                <div key={r.id} className="space-y-0">
+                  <div
+                    className={clsx(
+                      'card flex items-center gap-4 transition-colors cursor-pointer',
+                      isSelected
+                        ? 'border-blue-600/60 bg-blue-900/10'
+                        : 'hover:border-blue-600/40'
+                    )}
+                    onClick={() => {
+                      const video = document.querySelector('video')
+                      if (video) video.currentTime = r.start_time
+                      setSelectedRallyId(prev => prev === r.id ? null : r.id)
+                    }}
+                  >
+                    <div className="w-9 h-9 bg-blue-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Play className="w-4 h-4 text-blue-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-slate-200">Rally #{r.rally_number}</div>
+                      <div className="text-xs text-slate-500">
+                        {new Date(r.start_time * 1000).toISOString().substr(11, 8)}
+                        {' → '}
+                        {new Date(r.end_time * 1000).toISOString().substr(11, 8)}
+                        {' · '}
+                        {(r.end_time - r.start_time).toFixed(1)}s
+                      </div>
+                    </div>
+                    {r.winner_team && (
+                      <span className={clsx(
+                        'text-xs font-semibold px-2 py-1 rounded',
+                        r.winner_team === 'A' ? 'bg-blue-900/40 text-blue-400' : 'bg-red-900/40 text-red-400'
+                      )}>
+                        Team {r.winner_team}
+                      </span>
+                    )}
+                    {r.point_reason && (
+                      <span className="text-xs text-slate-500 hidden lg:block">{r.point_reason}</span>
+                    )}
                   </div>
+
+                  {/* Rotation panel — inline below selected rally */}
+                  {isSelected && (
+                    <div className="ml-4 mr-0 p-3 bg-court-panel border border-t-0 border-court-border rounded-b-lg">
+                      <RotationPanel rotation={rotation} players={[]} />
+                    </div>
+                  )}
                 </div>
-                {r.winner_team && (
-                  <span className={clsx(
-                    'text-xs font-semibold px-2 py-1 rounded',
-                    r.winner_team === 'A' ? 'bg-blue-900/40 text-blue-400' : 'bg-red-900/40 text-red-400'
-                  )}>
-                    Team {r.winner_team}
-                  </span>
-                )}
-                {r.point_reason && (
-                  <span className="text-xs text-slate-500 hidden lg:block">{r.point_reason}</span>
-                )}
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       )}

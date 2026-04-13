@@ -12,6 +12,7 @@ import api from '../services/api'
 import VideoPlayer from '../components/Video/VideoPlayer'
 import FilterPanel from '../components/Video/FilterPanel'
 import RotationPanel from '../components/Video/RotationPanel'
+import MatchSummaryTab from '../components/Video/MatchSummaryTab'
 import useAuthStore from '../store/authStore'
 import { useTrackingData } from '../hooks/useTrackingData'
 import { useAnalysisProgress } from '../hooks/useAnalysisProgress'
@@ -273,6 +274,12 @@ export default function MatchDetailPage() {
     enabled: !!match && match.status === 'completed' && activeTab === 'actions',
   })
 
+  const { data: heatmapData } = useQuery({
+    queryKey: ['ball-heatmap', id],
+    queryFn:  () => matchesAPI.ballHeatmap(id).then(r => r.data),
+    enabled: !!match && match.status === 'completed' && activeTab === 'summary',
+  })
+
   const { data: rotationsData } = useQuery({
     queryKey: ['rotations', id],
     queryFn:  () => matchesAPI.rotations(id).then(r => r.data),
@@ -324,7 +331,7 @@ export default function MatchDetailPage() {
 
   const availableTabs = useMemo(() => (
     match?.status === 'completed'
-      ? ['overview', 'rallies', 'actions', 'analytics']
+      ? ['overview', 'rallies', 'actions', 'analytics', 'summary']
       : ['overview', 'rallies']
   ), [match?.status])
 
@@ -646,6 +653,11 @@ export default function MatchDetailPage() {
           actionFilters={actionFilters}
           setActionFilters={setActionFilters}
         />
+      )}
+
+      {/* Tab: Summary */}
+      {activeTab === 'summary' && (
+        <MatchSummaryTab match={match} heatmapData={heatmapData} />
       )}
 
       {/* Tab: Analytics */}

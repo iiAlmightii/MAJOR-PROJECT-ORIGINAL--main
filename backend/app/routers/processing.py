@@ -279,6 +279,67 @@ async def get_actions(
     }
 
 
+@router.get("/{match_id}/tracking/ball-heatmap")
+async def get_ball_heatmap(
+    match_id: uuid.UUID,
+    cols: int = Query(20, ge=5, le=50, description="Number of grid columns"),
+    rows: int = Query(10, ge=5, le=30, description="Number of grid rows"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession   = Depends(get_db),
+):
+    """
+    Aggregate all ball_tracking court_x/court_y positions for the match into
+    a 2-D grid of hit counts.  Returns:
+      {
+        cols: int, rows: int,
+        max_count: int,
+        cells: [ {col, row, count, cx, cy} ]   (only non-zero cells)
+      }
+    court_x and court_y are normalized [0, 1].
+    """
+    from sqlalchemy import func as sqlfunc
+
+    result = await db.execute(
+        select(BallTracking.court_x, BallTracking.court_y)
+        .where(
+            BallTracking.match_id == match_id,
+            BallTracking.court_x.isnot(None),
+            BallTracking.court_y.isnot(None),
+        )
+    )
+    points = result.all()
+
+    # Build grid
+    grid: dict = {}
+    for court_x, court_y in points:
+        if not (0.0 <= court_x <= 1.0 and 0.0 <= court_y <= 1.0):
+            continue
+        col_idx = min(int(court_x * cols), cols - 1)
+        row_idx = min(int(court_y * rows), rows - 1)
+        key = (col_idx, row_idx)
+        grid[key] = grid.get(key, 0) + 1
+
+    max_count = max(grid.values(), default=0)
+    cells = [
+        {
+            "col":   c,
+            "row":   r,
+            "count": cnt,
+            "cx":    (c + 0.5) / cols,  # cell center in [0,1]
+            "cy":    (r + 0.5) / rows,
+        }
+        for (c, r), cnt in grid.items()
+    ]
+
+    return {
+        "cols":      cols,
+        "rows":      rows,
+        "max_count": max_count,
+        "total_points": len(points),
+        "cells":     cells,
+    }
+
+
 @router.get("/{match_id}/rotations")
 async def get_rotations(
     match_id: uuid.UUID,

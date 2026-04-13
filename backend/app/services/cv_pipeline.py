@@ -29,8 +29,9 @@ from app.services.player_tracker    import PlayerTracker
 from app.services.ball_detector     import BallDetector
 from app.services.rally_detector    import RallyDetector, RallySegment
 from app.services.homography_service import HomographyService
-from app.services.action_service    import ActionService
-from app.services.scoring_engine    import ScoringEngine
+from app.services.action_service      import ActionService
+from app.services.scoring_engine      import ScoringEngine
+from app.services.rotation_detector   import detect_rotation
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -130,9 +131,10 @@ class CVPipeline:
         await self._emit(8, "Processing frames...")
 
         # ── Data collectors ─────────────────────────────────────────────────
-        player_rows:   List[Dict] = []
-        ball_rows:     List[Dict] = []
-        action_rows:   List[Dict] = []
+        player_rows:      List[Dict] = []
+        ball_rows:        List[Dict] = []
+        action_rows:      List[Dict] = []
+        rotation_rows:    List[Dict] = []
         completed_rallies: List[RallySegment] = []
 
         frame_idx  = 0
@@ -169,6 +171,24 @@ class CVPipeline:
                 completed = self.rally_detector.update(frame_idx, ball, players)
                 if completed:
                     completed_rallies.append(completed)
+                    # Snapshot rotation at end of this rally
+                    positions = [
+                        {
+                            "player_id": p["track_id"],
+                            "court_x": p.get("court_x"),
+                            "court_y": p.get("court_y"),
+                        }
+                        for p in players
+                        if p.get("court_x") is not None
+                    ]
+                    rotation_rows.append(detect_rotation(
+                        match_id=self.match_id,
+                        rally_id=None,          # filled in after rally DB insert
+                        timestamp=frame_idx / fps,
+                        frame_number=frame_idx,
+                        player_positions=positions,
+                        team_side="unknown",
+                    ))
 
                 # ── Collect rows ────────────────────────────────────────────
                 if ball:
@@ -232,7 +252,7 @@ class CVPipeline:
 
         # ── Persist to DB ───────────────────────────────────────────────────
         player_id_map = await self._save_to_db(
-            player_rows, ball_rows, action_rows, completed_rallies, fps
+            player_rows, ball_rows, action_rows, completed_rallies, fps, rotation_rows
         )
 
         await self._emit(90, "Computing match analytics & scoring...")
@@ -263,11 +283,12 @@ class CVPipeline:
 
     async def _save_to_db(
         self,
-        player_rows:   List[Dict],
-        ball_rows:     List[Dict],
-        action_rows:   List[Dict],
-        rallies:       List[RallySegment],
-        fps:           float,
+        player_rows:    List[Dict],
+        ball_rows:      List[Dict],
+        action_rows:    List[Dict],
+        rallies:        List[RallySegment],
+        fps:            float,
+        rotation_rows:  List[Dict] = None,
     ) -> Dict[int, Any]:
         """Persist all data. Returns track_id → Player.id mapping."""
         from app.database import AsyncSessionLocal
@@ -275,7 +296,11 @@ class CVPipeline:
         from app.models.player import Player
         from app.models.tracking import PlayerTracking, BallTracking
         from app.models.actions import Action, ActionType, ActionResult, Rally
+        from app.models.rotations import Rotation
         import uuid
+
+        if rotation_rows is None:
+            rotation_rows = []
 
         player_id_map: Dict[int, uuid.UUID] = {}
 
@@ -355,9 +380,10 @@ class CVPipeline:
             await db.flush()
 
             # ── Rallies ─────────────────────────────────────────────────────
+            rally_db_objs = []
             for seg in rallies:
                 clip_path = os.path.join(self.rally_dir, f"rally_{seg.rally_number}.mp4")
-                db.add(Rally(
+                rally_obj = Rally(
                     match_id=uuid.UUID(self.match_id),
                     rally_number=seg.rally_number,
                     start_time=seg.start_time,
@@ -368,6 +394,39 @@ class CVPipeline:
                     winner_team=seg.winner_team,
                     point_reason=seg.point_reason,
                     events=seg.events or [],
+                )
+                db.add(rally_obj)
+                rally_db_objs.append(rally_obj)
+            await db.flush()  # populate rally UUIDs
+
+            # ── Rotations ───────────────────────────────────────────────────
+            for idx, rot in enumerate(rotation_rows):
+                # Link rotation to its rally by index (1 rotation per rally)
+                rally_uuid = rally_db_objs[idx].id if idx < len(rally_db_objs) else None
+                # Resolve track_id → player UUID in slot fields
+                def _resolve(slot_val):
+                    if slot_val is None:
+                        return None
+                    try:
+                        tid = int(slot_val)
+                        resolved = player_id_map.get(tid)
+                        return str(resolved) if resolved else None
+                    except (ValueError, TypeError):
+                        return slot_val
+
+                db.add(Rotation(
+                    match_id=uuid.UUID(self.match_id),
+                    rally_id=rally_uuid,
+                    timestamp=rot["timestamp"],
+                    frame_number=rot.get("frame_number"),
+                    team=rot.get("team", "unknown"),
+                    slot_1=_resolve(rot["slot_1"]),
+                    slot_2=_resolve(rot["slot_2"]),
+                    slot_3=_resolve(rot["slot_3"]),
+                    slot_4=_resolve(rot["slot_4"]),
+                    slot_5=_resolve(rot["slot_5"]),
+                    slot_6=_resolve(rot["slot_6"]),
+                    player_positions=rot.get("player_positions", []),
                 ))
 
             # ── Update match status ──────────────────────────────────────────

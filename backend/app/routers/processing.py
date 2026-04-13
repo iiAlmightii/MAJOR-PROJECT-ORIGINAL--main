@@ -25,6 +25,7 @@ from app.models.video import Video
 from app.models.tracking import PlayerTracking, BallTracking
 from app.models.actions import Action, ActionType
 from app.models.player import Player
+from app.models.rotations import Rotation
 from app.models.user import User, UserRole
 from app.utils.dependencies import get_current_user, require_coach
 from app.workers.analysis_worker import run_analysis, register_ws, unregister_ws
@@ -276,6 +277,32 @@ async def get_actions(
         "limit":  limit,
         "items":  items,
     }
+
+
+@router.get("/{match_id}/rotations")
+async def get_rotations(
+    match_id: uuid.UUID,
+    rally_id: Optional[str]  = Query(None, description="Filter by rally UUID"),
+    team:     Optional[str]  = Query(None, description="Filter by team side (home/away/unknown)"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession   = Depends(get_db),
+):
+    """
+    Return rotation snapshots for a match.
+    Each entry represents the 6-slot assignment at the end of one rally.
+    """
+    q = select(Rotation).where(Rotation.match_id == match_id)
+    if rally_id:
+        try:
+            q = q.where(Rotation.rally_id == uuid.UUID(rally_id))
+        except ValueError:
+            pass
+    if team:
+        q = q.where(Rotation.team == team)
+    q = q.order_by(Rotation.timestamp)
+
+    rows = (await db.execute(q)).scalars().all()
+    return {"rotations": [r.to_dict() for r in rows]}
 
 
 @router.post("/{match_id}/homography")

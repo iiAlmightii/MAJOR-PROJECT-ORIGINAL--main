@@ -55,6 +55,7 @@ class Match(Base):
     rallies = relationship("Rally", back_populates="match")
     actions = relationship("Action", back_populates="match")
     analytics = relationship("Analytics", back_populates="match")
+    rotations = relationship("Rotation", back_populates="match")
 
     def __repr__(self):
         return f"<Match {self.title} ({self.status})>"

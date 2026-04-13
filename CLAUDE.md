@@ -17,7 +17,7 @@ A Balltime/Hudl-like platform for volleyball coaches, players, and admins.
 
 ## Directory Structure
 ```
-MAJOR PROECT KARTHIK/
+MAJOR-PROJECT-ORIGINAL--main/
 ├── backend/           FastAPI app
 │   ├── app/
 │   │   ├── models/    SQLAlchemy ORM models
@@ -32,17 +32,29 @@ MAJOR PROECT KARTHIK/
 │       ├── pages/     LoginPage, MatchDetailPage, UploadPage …
 │       ├── components/Video/  VideoPlayer.jsx + FilterPanel.jsx
 │       └── hooks/     useTrackingData, useAnalysisProgress (WebSocket)
-├── training/          Training scripts for all 3 models
-│   ├── player_detection/  train_player_local.py (YOLOv8, 177 local Roboflow images)
-│   ├── ball_detection/    stream_coco_ball.py   (HF streaming, no full download)
+├── Dataset/           Training datasets (all models)
+│   ├── Action recognition/         (5 classes: block, defense, serve, set, spike)
+│   │   ├── data.yaml
+│   │   ├── Spike.mp4               ← place action video here for LSTM training
+│   │   └── annotations.json        ← tagged action timestamps (export from AnnotatePage)
+│   ├── Action Recognition 2/       (13 action classes)
+│   ├── Action recognition 3/       (6 classes: blocking, digging, passing, serving, setting, spiking)
+│   ├── Ball detector/              (1 class: Balls)
+│   ├── Court detector/             (1 class: court — segmentation)
+│   ├── Court detector 2/           (1 class: court_boundary)
+│   ├── Net detector/               (1 class: net)
+│   ├── Refree detector/            (1 class: referee)
+│   ├── Refree detector 2/          (1 class: referee)
+│   ├── rally detector/             (2 classes: break, in-play — classification)
+│   └── Volleyball Activity Dataset.v1i.yolov8 (1)/  (7 action classes, ~25k images)
+├── training/          Training scripts for all models
+│   ├── player_detection/  train_player_local.py → Dataset/Refree detector/
+│   ├── ball_detection/    train_ball.py → Dataset/Ball detector/
 │   └── action_recognition/
 │       ├── extract_poses.py       (RTMPose/MediaPipe → .npy clip sequences)
 │       ├── train_lstm.py          (BiLSTM 30×34 → phase1/phase2)
-│       ├── validate_spike.py      (cross-validate 16 tagged timestamps)
+│       ├── validate_spike.py      (cross-validate tagged timestamps)
 │       └── run_phase3_pipeline.py (one-command: extract→train→validate)
-├── DATA SET/ACTION DATA/
-│   ├── Spike.mp4
-│   └── annotations.json          (16 tagged spike timestamps, phase1 done)
 ├── models/weights/    Trained .pt weight files go here
 └── CLAUDE.md          ← this file
 ```
@@ -115,10 +127,12 @@ Without custom weights, YOLOv8n COCO pretrain (auto-downloaded) is used as fallb
 ActionService gracefully disables itself if no LSTM weights are present.
 
 ## Action Recognition Workflow
-1. Tag timestamps in `DATA SET/ACTION DATA/annotations.json`
-2. Run `python training/action_recognition/run_phase3_pipeline.py` (extract→train→validate)
-3. If VERDICT = PROCEED: add more videos + retrain with `--phase 2`
-4. Weights auto-loaded by `ActionService` on analysis start
+1. Place source video at `Dataset/Action recognition/Spike.mp4`
+2. Tag timestamps via the in-app AnnotatePage, then export:
+   `GET /annotations/export` → save as `Dataset/Action recognition/annotations.json`
+3. Run `python training/action_recognition/run_phase3_pipeline.py` (extract→train→validate)
+4. If VERDICT = PROCEED: add more videos to `Dataset/Action recognition/` + retrain with `--phase 2`
+5. Weights auto-loaded by `ActionService` on analysis start
 
 ## Database
 All tables auto-created on startup via SQLAlchemy `create_all`.

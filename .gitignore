@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+build/
+dist/
+pip-wheel-metadata/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Node / frontend
+node_modules/
+.vite/
+frontend/dist/
+
+# Editor / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+
+# Project-generated runtime data
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/rallies/*
+!backend/rallies/.gitkeep
+models/weights/*
+!models/weights/.gitkeep
+
+# Local datasets and training artifacts — ignore images/labels, keep config files
+Dataset/*
+!Dataset/*/
+Dataset/*/*
+!Dataset/*/data.yaml

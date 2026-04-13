@@ -1,0 +1,13 @@
+# Volleyball Referee Detection — Local Dataset
+# Source: Dataset/Refree detector  (Roboflow CC BY 4.0)
+# Training script: training/player_detection/train_player_local.py
+
+path: ../../Dataset/Refree detector
+
+train: train/images
+val:   valid/images
+test:  test/images
+
+nc: 1
+names:
+  0: referee

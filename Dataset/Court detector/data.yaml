@@ -1,0 +1,12 @@
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 1
+names: ['court']
+
+roboflow:
+  workspace: shukur-sabzaliev-bh7pq
+  project: shukur-sabzaliev
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/shukur-sabzaliev-bh7pq/shukur-sabzaliev

@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 7
+names: ['Defense-Move', 'attack', 'block', 'reception', 'service', 'setting', 'stand']
+
+roboflow:
+  workspace: karthiks-workspace-uge4q
+  project: volleyball-activity-dataset-un81q
+  version: 1
+  license: CC BY 4.0
+  url: https://app.roboflow.com/karthiks-workspace-uge4q/volleyball-activity-dataset-un81q/1

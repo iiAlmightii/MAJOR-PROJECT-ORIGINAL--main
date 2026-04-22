@@ -63,19 +63,22 @@ export default function VideoPlayer({ videoId, trackingData = null, onTimeUpdate
         const w = p.bbox_w * scaleX
         const h = p.bbox_h * scaleY
 
-        // Box
-        ctx.strokeStyle = p.team === 'A' ? '#3b82f6' : '#ef4444'
+        // Box color: blue=TeamA, red=TeamB, grey=unknown
+        const boxColor = p.team === 'A' ? '#3b82f6' : p.team === 'B' ? '#ef4444' : '#94a3b8'
+        ctx.strokeStyle = boxColor
         ctx.lineWidth = 2
         ctx.strokeRect(x, y, w, h)
 
         // Label background
-        ctx.fillStyle = p.team === 'A' ? '#3b82f6cc' : '#ef4444cc'
-        ctx.fillRect(x, y - 20, 40, 20)
+        const labelText = `#${p.player_track_id ?? '?'}`
+        ctx.font = 'bold 11px Inter'
+        const labelW = ctx.measureText(labelText).width + 6
+        ctx.fillStyle = boxColor + 'cc'
+        ctx.fillRect(x, y - 20, labelW, 20)
 
         // Label text
         ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 11px Inter'
-        ctx.fillText(`#${p.player_track_id}`, x + 3, y - 5)
+        ctx.fillText(labelText, x + 3, y - 5)
       })
     }
 
@@ -135,15 +138,17 @@ export default function VideoPlayer({ videoId, trackingData = null, onTimeUpdate
     if (data.players) {
       data.players.forEach(p => {
         if (p.court_x == null || p.court_y == null) return
-        const px = mapX + p.court_x * mapW
-        const py = mapY + p.court_y * mapH
+        const cx = Math.max(0, Math.min(1, p.court_x))
+        const cy = Math.max(0, Math.min(1, p.court_y))
+        const px = mapX + cx * mapW
+        const py = mapY + cy * mapH
         ctx.beginPath()
         ctx.arc(px, py, 4, 0, Math.PI * 2)
-        ctx.fillStyle = p.team === 'A' ? '#3b82f6' : '#ef4444'
+        ctx.fillStyle = p.team === 'A' ? '#3b82f6' : p.team === 'B' ? '#ef4444' : '#94a3b8'
         ctx.fill()
         ctx.fillStyle = '#fff'
         ctx.font = 'bold 7px Inter'
-        ctx.fillText(p.player_track_id, px - 3, py + 2.5)
+        ctx.fillText(p.player_track_id ?? '?', px - 3, py + 2.5)
       })
     }
 

@@ -31,12 +31,30 @@ except ImportError:
 WEIGHTS_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "..", "models", "weights"
 )
-CUSTOM_WEIGHTS = os.path.join(WEIGHTS_DIR, "player_detection.pt")
-FALLBACK_WEIGHTS = "yolov8n.pt"         # auto-downloaded by ultralytics
+CUSTOM_WEIGHTS    = os.path.join(WEIGHTS_DIR, "player_detection.pt")
+REFEREE_WEIGHTS   = os.path.join(WEIGHTS_DIR, "referee_detection.pt")
+FALLBACK_WEIGHTS  = "yolov8n.pt"        # auto-downloaded by ultralytics
 
-PERSON_CLASS_ID = 0                     # COCO class 0 = person
-CONF_THRESHOLD  = 0.45
-IOU_THRESHOLD   = 0.45
+PERSON_CLASS_ID   = 0                   # COCO class 0 = person
+CONF_THRESHOLD    = 0.45
+IOU_THRESHOLD     = 0.45
+REFEREE_IOU_THRESH = 0.30               # overlap with referee box → suppress player
+
+# Court boundary margins: allow detections slightly outside the court
+# (homography calibration is imperfect) but reject clear audience members.
+# Values are in normalised court coords (0=near side, 1=far side).
+COURT_X_MIN = -0.25
+COURT_X_MAX =  1.25
+COURT_Y_MIN = -0.30   # allow some area above the court (players jump)
+COURT_Y_MAX =  1.30
+
+# Court boundary margins: allow detections slightly outside the court
+# (homography calibration is imperfect) but reject clear audience members.
+# Values are in normalised court coords (0=near side, 1=far side).
+COURT_X_MIN = -0.25
+COURT_X_MAX =  1.25
+COURT_Y_MIN = -0.30   # allow some area above the court (players jump)
+COURT_Y_MAX =  1.30
 
 
 class PlayerTracker:
@@ -53,7 +71,8 @@ class PlayerTracker:
     """
 
     def __init__(self):
-        self._model  = None
+        self._model          = None
+        self._referee_model  = None   # optional: suppress referee detections
         self._tracker: Optional[Any] = None
         self._loaded  = False
         self._device  = "cpu"
@@ -69,8 +88,8 @@ class PlayerTracker:
                 self._device = "cpu"
 
             weights = CUSTOM_WEIGHTS if os.path.exists(CUSTOM_WEIGHTS) else FALLBACK_WEIGHTS
-            logger.info(f"Loading player detection model: {weights}")
-            logger.info(f"PlayerTracker: inference device {'cuda:0' if self._device == 0 else 'cpu'}")
+            logger.info(f"PlayerTracker: loading {weights}")
+            logger.info(f"PlayerTracker: device {'cuda:0' if self._device == 0 else 'cpu'}")
             self._model   = YOLO(weights)
             self._tracker = sv.ByteTrack(
                 track_activation_threshold=CONF_THRESHOLD,
@@ -78,6 +97,15 @@ class PlayerTracker:
                 minimum_matching_threshold=0.8,
                 frame_rate=25,
             )
+
+            # Load referee suppressor if weights available
+            if os.path.exists(REFEREE_WEIGHTS):
+                try:
+                    self._referee_model = YOLO(REFEREE_WEIGHTS)
+                    logger.info("PlayerTracker: referee suppressor loaded")
+                except Exception as e:
+                    logger.warning(f"PlayerTracker: referee model failed to load: {e}")
+
             self._loaded = True
             return True
         except Exception as exc:
@@ -130,6 +158,18 @@ class PlayerTracker:
             detections = self._tracker.update_with_detections(detections)
             timestamp  = frame_idx / fps if fps > 0 else 0.0
 
+            # Build referee bounding boxes for suppression (if model loaded)
+            referee_boxes: List[List[float]] = []
+            if self._referee_model is not None:
+                try:
+                    ref_res = self._referee_model.predict(
+                        frame, conf=0.40, verbose=False, device=self._device,
+                    )[0]
+                    for box in ref_res.boxes.xyxy.cpu().numpy():
+                        referee_boxes.append(box.tolist())
+                except Exception:
+                    pass
+
             output = []
             for i in range(len(detections)):
                 x1, y1, x2, y2 = detections.xyxy[i]
@@ -142,6 +182,21 @@ class PlayerTracker:
                 cx, cy = -1.0, -1.0
                 if homography and homography.is_calibrated():
                     cx, cy = homography.transform_bbox_center(bx, by, bw, bh)
+                    # Skip detections clearly outside the court (audience members,
+                    # referees near the sideline, scoreboard operators, etc.)
+                    if not (COURT_X_MIN <= cx <= COURT_X_MAX and
+                            COURT_Y_MIN <= cy <= COURT_Y_MAX):
+                        continue
+
+                # Skip very small boxes — likely crowd noise, not players
+                frame_h, frame_w = frame.shape[:2]
+                min_height_px = frame_h * 0.06   # player must be ≥6% of frame height
+                if bh < min_height_px:
+                    continue
+
+                # Suppress if this box overlaps a detected referee
+                if referee_boxes and self._iou_any([bx, by, bx+bw, by+bh], referee_boxes) > REFEREE_IOU_THRESH:
+                    continue
 
                 output.append({
                     "track_id":    tid,
@@ -150,8 +205,8 @@ class PlayerTracker:
                     "bbox_w":      bw,
                     "bbox_h":      bh,
                     "confidence":  conf,
-                    "court_x":     cx,
-                    "court_y":     cy,
+                    "court_x":     cx if cx >= 0 else None,
+                    "court_y":     cy if cy >= 0 else None,
                     "frame_number":frame_idx,
                     "timestamp":   round(timestamp, 4),
                 })
@@ -160,6 +215,23 @@ class PlayerTracker:
         except Exception as exc:
             logger.error(f"PlayerTracker.process_frame error at frame {frame_idx}: {exc}")
             return []
+
+    @staticmethod
+    def _iou_any(box: List[float], ref_boxes: List[List[float]]) -> float:
+        """Return the maximum IoU between box and any reference box."""
+        x1, y1, x2, y2 = box
+        best = 0.0
+        for rb in ref_boxes:
+            rx1, ry1, rx2, ry2 = rb
+            ix1, iy1 = max(x1, rx1), max(y1, ry1)
+            ix2, iy2 = min(x2, rx2), min(y2, ry2)
+            inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+            if inter == 0:
+                continue
+            union = (x2-x1)*(y2-y1) + (rx2-rx1)*(ry2-ry1) - inter
+            iou = inter / union if union > 0 else 0.0
+            best = max(best, iou)
+        return best
 
     # ──────────────────────────────────────────────────────────────────────────
     # Annotation helper (writes boxes + IDs onto the frame in-place)

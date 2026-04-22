@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str = "Admin@123456"
     ADMIN_USERNAME: str = "admin"
 
+    # Speech-to-Knowledge / Whisper
+    # tiny=fastest, base=good CPU, small=better, medium/large=GPU recommended
+    WHISPER_MODEL: str = "base"
+
     @property
     def allowed_origins_list(self) -> List[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]

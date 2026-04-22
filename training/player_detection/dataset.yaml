@@ -1,0 +1,23 @@
+# Volleyball Player Detection — Dataset Config
+# YOLOv8 format
+
+path: ../../training/datasets/player_detection
+train: train/images
+val:   val/images
+test:  test/images
+
+# Number of classes
+nc: 2
+
+# Class names
+names:
+  0: player_team_a
+  1: player_team_b
+
+# Recommended image size: 1280 (players are small at broadcast resolution)
+# Minimum image size: 640
+
+# Label format (each .txt file, one row per player):
+#   class  cx  cy  width  height  (all normalised 0-1)
+# Example:
+#   0  0.452  0.731  0.038  0.142

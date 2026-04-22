@@ -8,6 +8,7 @@ from app.models.analytics import Analytics
 from app.models.logs import UserActivityLog
 from app.models.annotations import VideoAnnotation  # noqa: F401
 from app.models.rotations import Rotation  # noqa: F401
+from app.models.speech_events import SpeechTranscription, SpeechEvent  # noqa: F401
 
 __all__ = [
     "User", "Match", "Video", "Player",
@@ -16,4 +17,5 @@ __all__ = [
     "Analytics", "UserActivityLog",
     "VideoAnnotation",
     "Rotation",
+    "SpeechTranscription", "SpeechEvent",
 ]

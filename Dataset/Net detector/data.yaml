@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['net']
+
+roboflow:
+  workspace: tfginfo-gtd2c
+  project: volleyball_net
+  version: 3
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/tfginfo-gtd2c/volleyball_net/dataset/3

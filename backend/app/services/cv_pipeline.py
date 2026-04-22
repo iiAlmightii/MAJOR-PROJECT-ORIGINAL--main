@@ -25,13 +25,14 @@ from typing import Callable, Optional, List, Dict, Any
 import cv2
 import numpy as np
 
-from app.services.player_tracker    import PlayerTracker
-from app.services.ball_detector     import BallDetector
-from app.services.rally_detector    import RallyDetector, RallySegment
+from app.services.player_tracker     import PlayerTracker
+from app.services.ball_detector      import BallDetector
+from app.services.rally_detector     import RallyDetector, RallySegment
 from app.services.homography_service import HomographyService
-from app.services.action_service      import ActionService
-from app.services.scoring_engine      import ScoringEngine
-from app.services.rotation_detector   import detect_rotation
+from app.services.action_service     import ActionService
+from app.services.scoring_engine     import ScoringEngine
+from app.services.rotation_detector  import detect_rotation
+from app.services.event_fusion       import EventFusionEngine
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -65,12 +66,13 @@ class CVPipeline:
         self.progress_cb   = progress_cb
         self.court_corners = court_corners
 
-        self.player_tracker = PlayerTracker()
-        self.ball_detector  = BallDetector()
-        self.homography     = HomographyService()
-        self.rally_detector = RallyDetector()
-        self.action_service = ActionService()
-        self.scoring_engine = ScoringEngine()
+        self.player_tracker  = PlayerTracker()
+        self.ball_detector   = BallDetector()
+        self.homography      = HomographyService()
+        self.rally_detector  = RallyDetector()
+        self.action_service  = ActionService()
+        self.scoring_engine  = ScoringEngine()
+        self.fusion_engine   = EventFusionEngine()
 
         rally_dir = os.path.join(settings.RALLIES_DIR, match_id)
         os.makedirs(rally_dir, exist_ok=True)
@@ -258,6 +260,9 @@ class CVPipeline:
         await self._emit(90, "Computing match analytics & scoring...")
         await self._run_scoring(player_id_map, action_rows, completed_rallies)
 
+        await self._emit(93, "Fusing CV events with any existing speech events...")
+        await self._run_speech_fusion(action_rows)
+
         await self._emit(94, "Clipping rally segments...")
         await self._clip_rallies(completed_rallies)
 
@@ -364,18 +369,24 @@ class CVPipeline:
             # ── Actions ─────────────────────────────────────────────────────
             valid_action_types = {e.value for e in ActionType}
             for row in action_rows:
-                pid  = player_id_map.get(row["track_id"])
-                atype_raw = row["action_type"].lower()
+                tid = row.get("track_id")
+                pid = player_id_map.get(tid) if tid is not None else None
+                atype_raw = (row.get("action_type") or "unknown").lower()
                 if atype_raw not in valid_action_types:
                     atype_raw = "unknown"
+                # Map result from action row (speech-fused rows may have 'success'/'error')
+                result_raw = (row.get("result") or "neutral").lower()
+                if result_raw not in {"success", "error", "neutral"}:
+                    result_raw = "neutral"
                 db.add(Action(
                     match_id=uuid.UUID(self.match_id),
                     player_id=pid,
                     action_type=ActionType(atype_raw),
-                    result=ActionResult.neutral,
+                    result=ActionResult(result_raw),
                     timestamp=row["timestamp"],
-                    frame_number=row["frame_number"],
+                    frame_number=row.get("frame_number"),
                     confidence=row.get("confidence"),
+                    source=row.get("source", "cv"),
                 ))
             await db.flush()
 
@@ -465,16 +476,19 @@ class CVPipeline:
         async with AsyncSessionLocal() as db:
             # Build data for scoring engine
             rally_dicts  = [r.to_dict() for r in rallies]
-            action_dicts = [
+            action_dicts_raw = [
                 {
-                    "player_id":   str(player_id_map.get(r["track_id"], "")),
+                    "player_id":   str(player_id_map.get(r.get("track_id"), "")),
                     "action_type": r["action_type"],
-                    "result":      "neutral",
+                    "result":      r.get("result", "neutral"),
                     "timestamp":   r["timestamp"],
-                    "team":        None,
+                    "source":      r.get("source", "cv"),
+                    "team":        r.get("team"),
                 }
                 for r in action_rows
             ]
+            # Infer results from rally context where result is still neutral
+            action_dicts = self.scoring_engine.infer_action_results(action_dicts_raw, rally_dicts)
 
             # Load players to get team info
             p_result = await db.execute(
@@ -559,6 +573,68 @@ class CVPipeline:
             await db.commit()
 
             logger.info(f"Scoring complete for match {self.match_id}")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Event Fusion: merge CV actions with any pre-existing speech events
+    # ──────────────────────────────────────────────────────────────────────────
+
+    async def _run_speech_fusion(self, cv_action_rows: List[Dict]):
+        """
+        If speech events already exist for this match (uploaded before CV analysis),
+        fuse them with the freshly computed CV action rows.
+        Updates SpeechEvent.fusion_status in DB.
+        """
+        from app.database import AsyncSessionLocal
+        from app.models.speech_events import SpeechEvent
+        from sqlalchemy import select
+        import uuid
+
+        try:
+            async with AsyncSessionLocal() as db:
+                se_result = await db.execute(
+                    select(SpeechEvent).where(
+                        SpeechEvent.match_id == uuid.UUID(self.match_id)
+                    )
+                )
+                speech_events_db = se_result.scalars().all()
+
+                if not speech_events_db:
+                    return  # Nothing to fuse
+
+                se_dicts = [
+                    {
+                        "event_type": e.event_type,
+                        "start_time": e.start_time,
+                        "result":     e.result,
+                        "team":       e.team,
+                        "confidence": e.extraction_confidence,
+                    }
+                    for e in speech_events_db
+                ]
+
+                cv_dicts = [
+                    {
+                        "action_type": r.get("action_type", ""),
+                        "timestamp":   r.get("timestamp", 0.0),
+                        "confidence":  r.get("confidence", 0.5),
+                        "result":      r.get("result", "neutral"),
+                    }
+                    for r in cv_action_rows
+                ]
+
+                _, updated_se = self.fusion_engine.fuse(cv_dicts, se_dicts)
+
+                # Update fusion status in DB
+                for i, se_db in enumerate(speech_events_db):
+                    if i < len(updated_se):
+                        se_db.fusion_status = updated_se[i].get("fusion_status", "standalone")
+
+                await db.commit()
+                fused = sum(1 for se in updated_se if se.get("fusion_status") == "fused")
+                logger.info(f"Speech fusion: {fused}/{len(speech_events_db)} events fused")
+
+        except Exception as e:
+            logger.warning(f"Speech fusion step failed (non-critical): {e}")
 
     # ──────────────────────────────────────────────────────────────────────────
     # Rally clip generation (FFmpeg)

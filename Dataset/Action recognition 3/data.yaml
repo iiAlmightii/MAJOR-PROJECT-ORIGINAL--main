@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 6
+names: ['blocking', 'digging', 'passing', 'serving', 'setting', 'spiking']
+
+roboflow:
+  workspace: karthiks-workspace-gijbd
+  project: karthiks-workspace-gijbd
+  version: dataset
+  license: Private
+  url: https://app.roboflow.com/karthiks-workspace-gijbd/karthiks-workspace-gijbd/dataset

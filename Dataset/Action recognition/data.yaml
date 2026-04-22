@@ -1,0 +1,12 @@
+train: ../train/images
+val: ../test/images
+
+nc: 5
+names: ['block', 'defense', 'serve', 'set', 'spike']
+
+roboflow:
+  workspace: volleyball-players
+  project: volleyball-actions
+  version: 5
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/volleyball-players/volleyball-actions/dataset/5

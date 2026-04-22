@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['refereee']
+
+roboflow:
+  workspace: tfginfo-gtd2c
+  project: volleyball-referees
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/tfginfo-gtd2c/volleyball-referees/dataset/1

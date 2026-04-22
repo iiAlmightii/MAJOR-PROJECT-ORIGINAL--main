@@ -19,7 +19,7 @@ pytest==8.2.0
 pytest-asyncio==0.23.6
 
 # ─── Phase 2: Computer Vision Pipeline ───────────────────────────────────────
-ultralytics==8.2.18
+ultralytics>=8.4.0
 supervision==0.21.0
 lap==0.4.0
 scipy==1.13.1
@@ -31,3 +31,8 @@ torchvision>=0.15.0
 rtmlib>=0.0.13          # RTMPose keypoint extraction (auto-downloads ONNX weights)
 mediapipe>=0.10.14      # Pose fallback if rtmlib not available
 onnxruntime>=1.18.0     # ONNX inference backend for rtmlib
+
+# ─── Speech-to-Knowledge Module ───────────────────────────────────────────────
+openai-whisper>=20231117   # Whisper ASR — local inference, no API key needed
+# Note: also installs ffmpeg-python. System ffmpeg must be available.
+# Install system ffmpeg:  sudo apt install ffmpeg  (Ubuntu)  or  brew install ffmpeg (Mac)

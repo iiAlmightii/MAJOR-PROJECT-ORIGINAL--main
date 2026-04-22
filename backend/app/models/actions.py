@@ -11,7 +11,7 @@ class ActionType(str, enum.Enum):
     serve = "serve"
     reception = "reception"
     set = "set"
-    attack = "attack"
+    attack = "attack"      # covers both 'attack' and 'spike' labels
     block = "block"
     dig = "dig"
     free_ball_sent = "free_ball_sent"
@@ -49,6 +49,8 @@ class Action(Base):
     zone: Mapped[int] = mapped_column(Integer, nullable=True)          # court zone 1-6
     confidence: Mapped[float] = mapped_column(Float, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=True, default="cv")
+    # source: 'cv' = computer vision | 'speech' = from commentary NLP | 'fused' = both
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships

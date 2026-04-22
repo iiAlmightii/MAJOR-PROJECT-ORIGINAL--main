@@ -99,6 +99,12 @@ export const matchesAPI = {
   actions:   (id, params) => api.get(`/matches/${id}/actions`,    { params }),
   rotations:   (id, params) => api.get(`/matches/${id}/rotations`,             { params }),
   ballHeatmap: (id, params) => api.get(`/matches/${id}/tracking/ball-heatmap`, { params }),
+  // Speech-to-Knowledge endpoints
+  speechEvents:        (id, params)   => api.get(`/matches/${id}/speech/events`,         { params }),
+  speechTranscriptions:(id)           => api.get(`/matches/${id}/speech/transcriptions`),
+  transcribeVideo:     (id, language) => api.post(`/matches/${id}/speech/transcribe-video`, null, { params: { language } }),
+  transcribeAudio:     (id, formData) => api.post(`/matches/${id}/speech/transcribe`,     formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  runFusion:           (id)           => api.post(`/matches/${id}/speech/fuse`),
 }
 
 // ─── Annotations ─────────────────────────────────────────────

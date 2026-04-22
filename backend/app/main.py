@@ -14,6 +14,7 @@ from app.routers import auth, users, videos, matches, analytics
 from app.routers import processing
 from app.routers import annotations as annotations_router
 from app.routers import training as training_router
+from app.routers import speech as speech_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ def _check_cv_deps():
         "mediapipe": False,
         "rtmlib": False,
         "cv2": False,
+        "whisper": False,
     }
     for name in deps:
         try:
@@ -125,6 +127,7 @@ app.include_router(analytics.router, prefix="/api")
 app.include_router(processing.router, prefix="/api")
 app.include_router(annotations_router.router, prefix="/api")
 app.include_router(training_router.router, prefix="/api")
+app.include_router(speech_router.router, prefix="/api")
 
 
 @app.get("/api/health")

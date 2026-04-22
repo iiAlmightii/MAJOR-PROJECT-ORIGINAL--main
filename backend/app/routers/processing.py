@@ -65,8 +65,20 @@ async def start_analysis(
     if not video:
         raise HTTPException(404, "Video file not found")
 
+    # Clear any stale data from a previous run before re-analyzing
+    from app.models.player import Player
+    from app.models.tracking import PlayerTracking, BallTracking
+    from app.models.actions import Action, Rally
+    from app.models.rotations import Rotation
+    from app.models.analytics import Analytics
+    from sqlalchemy import delete as sa_delete
+
+    for model in (Rotation, Action, BallTracking, PlayerTracking, Rally, Analytics, Player):
+        await db.execute(sa_delete(model).where(model.match_id == match_id))
+
     match.status = MatchStatus.processing
     match.processing_progress = 0
+    match.total_rallies = 0
     await db.flush()
 
     background_tasks.add_task(
@@ -126,9 +138,10 @@ async def get_tracking_data(
     t_min = timestamp - window
     t_max = timestamp + window
 
-    # Players
+    # Players — join with Player to get the integer ByteTrack ID and team
     p_result = await db.execute(
-        select(PlayerTracking)
+        select(PlayerTracking, Player)
+        .join(Player, PlayerTracking.player_id == Player.id)
         .where(
             PlayerTracking.match_id == match_id,
             PlayerTracking.timestamp >= t_min,
@@ -136,7 +149,7 @@ async def get_tracking_data(
         )
         .order_by(PlayerTracking.timestamp)
     )
-    players = p_result.scalars().all()
+    player_rows = p_result.all()
 
     # Ball
     b_result = await db.execute(
@@ -150,21 +163,23 @@ async def get_tracking_data(
     )
     balls = b_result.scalars().all()
 
-    # Deduplicate: take closest frame per track_id
+    # Deduplicate: take closest frame per player UUID
     seen_tracks: dict = {}
-    for pt in players:
+    for pt, player in player_rows:
         tid = str(pt.player_id)
         if tid not in seen_tracks or abs(pt.timestamp - timestamp) < abs(seen_tracks[tid]["timestamp"] - timestamp):
             seen_tracks[tid] = {
-                "player_id":   tid,
-                "track_id":    pt.player_id,
-                "bbox_x":      pt.bbox_x,
-                "bbox_y":      pt.bbox_y,
-                "bbox_w":      pt.bbox_w,
-                "bbox_h":      pt.bbox_h,
-                "court_x":     pt.court_x,
-                "court_y":     pt.court_y,
-                "timestamp":   pt.timestamp,
+                "player_id":       tid,
+                "player_track_id": player.player_track_id,   # int ByteTrack ID → shows as #3, #7 etc.
+                "team":            player.team,
+                "display_name":    player.display_name,
+                "bbox_x":          pt.bbox_x,
+                "bbox_y":          pt.bbox_y,
+                "bbox_w":          pt.bbox_w,
+                "bbox_h":          pt.bbox_h,
+                "court_x":         pt.court_x,
+                "court_y":         pt.court_y,
+                "timestamp":       pt.timestamp,
             }
 
     ball_data = None

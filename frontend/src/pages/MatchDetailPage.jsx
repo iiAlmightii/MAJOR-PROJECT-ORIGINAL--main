@@ -13,6 +13,7 @@ import VideoPlayer from '../components/Video/VideoPlayer'
 import FilterPanel from '../components/Video/FilterPanel'
 import RotationPanel from '../components/Video/RotationPanel'
 import MatchSummaryTab from '../components/Video/MatchSummaryTab'
+import SpeechTab from '../components/Video/SpeechTab'
 import useAuthStore from '../store/authStore'
 import { useTrackingData } from '../hooks/useTrackingData'
 import { useAnalysisProgress } from '../hooks/useAnalysisProgress'
@@ -331,8 +332,8 @@ export default function MatchDetailPage() {
 
   const availableTabs = useMemo(() => (
     match?.status === 'completed'
-      ? ['overview', 'rallies', 'actions', 'analytics', 'summary']
-      : ['overview', 'rallies']
+      ? ['overview', 'rallies', 'actions', 'analytics', 'summary', 'speech']
+      : ['overview', 'rallies', 'speech']
   ), [match?.status])
 
   useEffect(() => {
@@ -658,6 +659,11 @@ export default function MatchDetailPage() {
       {/* Tab: Summary */}
       {activeTab === 'summary' && (
         <MatchSummaryTab match={match} heatmapData={heatmapData} />
+      )}
+
+      {/* Tab: Speech */}
+      {activeTab === 'speech' && (
+        <SpeechTab matchId={id} matchStatus={match.status} />
       )}
 
       {/* Tab: Analytics */}

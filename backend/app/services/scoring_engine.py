@@ -52,6 +52,86 @@ class ScoringEngine:
     Stateless scoring engine — call compute() with rally/action data.
     """
 
+    def infer_action_results(
+        self,
+        actions: List[Dict[str, Any]],
+        rallies: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        Rule-based result inference when CV pipeline has no result context.
+
+        Rules:
+          1. If action result is already set (not 'neutral'), keep it.
+          2. Last action in a rally + rally has a winner:
+             - If action team == rally.winner_team  → success (for spike/serve/block)
+             - If action team != rally.winner_team  → error   (for spike/serve/block)
+          3. Serves and attacks that are not the last action → neutral (not resolved yet).
+          4. Receptions, digs, sets → always neutral unless speech-tagged.
+        """
+        if not actions:
+            return actions
+
+        # Build rally boundaries
+        rally_intervals = []
+        for r in rallies:
+            rally_intervals.append({
+                "start":  r.get("start_time", 0),
+                "end":    r.get("end_time",   0),
+                "winner": r.get("winner_team"),
+            })
+        rally_intervals.sort(key=lambda x: x["start"])
+
+        def get_rally(ts: float):
+            for ri in rally_intervals:
+                if ri["start"] <= ts <= ri["end"] + 0.5:
+                    return ri
+            return None
+
+        # Sort by timestamp to find "last action in rally"
+        sorted_actions = sorted(actions, key=lambda a: a.get("timestamp", 0))
+
+        # For each rally, mark the last action in it
+        rally_last: Dict[str, int] = {}  # interval idx → last action index in sorted_actions
+        for i, act in enumerate(sorted_actions):
+            ri = get_rally(act.get("timestamp", 0))
+            if ri:
+                key = f"{ri['start']:.2f}"
+                rally_last[key] = i
+
+        last_action_indices = set(rally_last.values())
+
+        updated = []
+        for i, act in enumerate(sorted_actions):
+            act = dict(act)
+            if act.get("result", "neutral") != "neutral":
+                updated.append(act)
+                continue
+
+            atype = act.get("action_type", "").lower()
+            ri    = get_rally(act.get("timestamp", 0))
+
+            if ri and ri.get("winner") and i in last_action_indices:
+                winner = ri["winner"]
+                team   = act.get("team")
+
+                if atype in ("spike", "attack", "serve", "block"):
+                    if team == winner:
+                        act["result"] = "success"
+                    elif team is not None:
+                        act["result"] = "error"
+                    else:
+                        # No team info → assume success if last action winner
+                        act["result"] = "success"
+
+            updated.append(act)
+
+        logger.info(
+            f"ScoringEngine.infer_action_results: "
+            f"{sum(1 for a in updated if a.get('result') != 'neutral')} / {len(updated)} "
+            f"actions have resolved results"
+        )
+        return updated
+
     def compute(
         self,
         rallies: List[Dict[str, Any]],

@@ -1,0 +1,12 @@
+train: ../train/images
+val: ../train/images
+
+nc: 1
+names: ['Balls']
+
+roboflow:
+  workspace: volleyball-ball-detection-usfhk
+  project: volleyball-ball-detection-gc9v8
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/volleyball-ball-detection-usfhk/volleyball-ball-detection-gc9v8/dataset/1

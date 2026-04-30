@@ -36,9 +36,10 @@ REFEREE_WEIGHTS   = os.path.join(WEIGHTS_DIR, "referee_detection.pt")
 FALLBACK_WEIGHTS  = "yolov8n.pt"        # auto-downloaded by ultralytics
 
 PERSON_CLASS_ID   = 0                   # COCO class 0 = person
-CONF_THRESHOLD    = 0.45
+CONF_THRESHOLD    = 0.50   # raised from 0.45 — reduces audience false positives
 IOU_THRESHOLD     = 0.45
 REFEREE_IOU_THRESH = 0.30               # overlap with referee box → suppress player
+MAX_TRACKS        = 16     # 12 players + 2 refs + 2 coaches hard ceiling
 
 # Court boundary margins: allow detections slightly outside the court
 # (homography calibration is imperfect) but reject clear audience members.
@@ -93,8 +94,8 @@ class PlayerTracker:
             self._model   = YOLO(weights)
             self._tracker = sv.ByteTrack(
                 track_activation_threshold=CONF_THRESHOLD,
-                lost_track_buffer=30,
-                minimum_matching_threshold=0.8,
+                lost_track_buffer=120,
+                minimum_matching_threshold=0.65,
                 frame_rate=25,
             )
 
@@ -117,8 +118,8 @@ class PlayerTracker:
         if CV_AVAILABLE and self._tracker:
             self._tracker = sv.ByteTrack(
                 track_activation_threshold=CONF_THRESHOLD,
-                lost_track_buffer=30,
-                minimum_matching_threshold=0.8,
+                lost_track_buffer=120,
+                minimum_matching_threshold=0.65,
                 frame_rate=25,
             )
 
@@ -210,6 +211,12 @@ class PlayerTracker:
                     "frame_number":frame_idx,
                     "timestamp":   round(timestamp, 4),
                 })
+
+            # Hard cap: keep only the MAX_TRACKS detections with highest confidence
+            if len(output) > MAX_TRACKS:
+                output.sort(key=lambda d: d["confidence"], reverse=True)
+                output = output[:MAX_TRACKS]
+
             return output
 
         except Exception as exc:

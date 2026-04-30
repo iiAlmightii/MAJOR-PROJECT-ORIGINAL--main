@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import String, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -23,6 +24,7 @@ class Player(Base):
     position: Mapped[str] = mapped_column(String(50), nullable=True)
     jersey_number: Mapped[str] = mapped_column(String(10), nullable=True)
     display_name: Mapped[str] = mapped_column(String(100), nullable=True)
+    display_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -32,4 +34,4 @@ class Player(Base):
     actions = relationship("Action", back_populates="player")
 
     def __repr__(self):
-        return f"<Player {self.display_name or self.player_track_id} (Match: {self.match_id})>"
+        return f"<Player #{self.display_number or self.player_track_id} (Match: {self.match_id})>"

@@ -518,6 +518,7 @@ export default function MatchDetailPage() {
           {match.video_id && (
             <VideoPlayer
               videoId={match.video_id}
+              matchId={id}
               trackingData={showOverlay ? trackingData : null}
               onTimeUpdate={handleTimeUpdate}
               showOverlay={showOverlay}

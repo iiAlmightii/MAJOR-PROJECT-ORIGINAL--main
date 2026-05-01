@@ -4,6 +4,7 @@ import {
   SkipBack, SkipForward, Settings
 } from 'lucide-react'
 import { videosAPI } from '../../services/api'
+import PlayerProfileModal from './PlayerProfileModal'
 
 function formatTime(s) {
   if (!s || isNaN(s)) return '0:00'
@@ -24,11 +25,12 @@ function formatTime(s) {
  *   onTimeUpdate – callback(timestamp_seconds)
  *   showOverlay  – boolean, toggle tracking overlay
  */
-export default function VideoPlayer({ videoId, trackingData = null, onTimeUpdate, showOverlay = true }) {
+export default function VideoPlayer({ videoId, matchId, trackingData = null, onTimeUpdate, showOverlay = true }) {
   const videoRef   = useRef(null)
   const canvasRef  = useRef(null)
   const containerRef = useRef(null)
   const [playing,    setPlaying]    = useState(false)
+  const [selectedPlayerId, setSelectedPlayerId] = useState(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration,   setDuration]   = useState(0)
   const [volume,     setVolume]     = useState(1)
@@ -235,6 +237,27 @@ export default function VideoPlayer({ videoId, trackingData = null, onTimeUpdate
     setShowRates(false)
   }
 
+  const handleCanvasClick = (e) => {
+    const canvas = canvasRef.current
+    const video  = videoRef.current
+    if (!canvas || !video || !trackingData?.players?.length) {
+      togglePlay()
+      return
+    }
+    const rect   = canvas.getBoundingClientRect()
+    const clickX = (e.clientX - rect.left) * (video.videoWidth  / canvas.clientWidth)
+    const clickY = (e.clientY - rect.top)  * (video.videoHeight / canvas.clientHeight)
+
+    for (const p of trackingData.players) {
+      const { bbox_x: x, bbox_y: y, bbox_w: w, bbox_h: h } = p
+      if (clickX >= x && clickX <= x + w && clickY >= y && clickY <= y + h) {
+        setSelectedPlayerId(p.player_id)
+        return
+      }
+    }
+    togglePlay()
+  }
+
   const showControlsTemporarily = () => {
     setShowControls(true)
     clearTimeout(hideTimer.current)
@@ -255,18 +278,29 @@ export default function VideoPlayer({ videoId, trackingData = null, onTimeUpdate
         ref={videoRef}
         src={videoSrc}
         className="w-full aspect-video"
-        onClick={togglePlay}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
-        crossOrigin="use-credentials"
       />
 
-      {/* Tracking overlay canvas */}
-      {trackingData && (
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full pointer-events-none"
+      {/* Tracking overlay canvas — always rendered so clicks toggle play when no overlay */}
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full cursor-pointer"
+        onClick={handleCanvasClick}
+      />
+
+      {/* Player profile modal */}
+      {selectedPlayerId && matchId && (
+        <PlayerProfileModal
+          matchId={matchId}
+          playerId={selectedPlayerId}
+          onClose={() => setSelectedPlayerId(null)}
+          onSeek={(ts) => {
+            const v = videoRef.current
+            if (v) v.currentTime = ts
+            setSelectedPlayerId(null)
+          }}
         />
       )}
 

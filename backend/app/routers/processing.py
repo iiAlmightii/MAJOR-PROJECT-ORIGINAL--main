@@ -91,6 +91,59 @@ async def start_analysis(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Re-analyze (wipe existing data and restart CV pipeline)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/{match_id}/reanalyze")
+async def reanalyze_match(
+    match_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    body: AnalyzeRequest = AnalyzeRequest(),
+    current_user: User = Depends(require_coach),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wipe existing tracking data and re-run the CV pipeline."""
+    result = await db.execute(select(Match).where(Match.id == match_id))
+    match = result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(404, "Match not found")
+    if current_user.role != UserRole.admin and match.uploaded_by != current_user.id:
+        raise HTTPException(403, "Access denied")
+    if match.status == MatchStatus.processing:
+        raise HTTPException(400, "Analysis already running")
+
+    vid_result = await db.execute(select(Video).where(Video.id == match.video_id))
+    video = vid_result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(404, "Video file not found")
+
+    from app.models.player import Player
+    from app.models.tracking import PlayerTracking, BallTracking
+    from app.models.actions import Action, Rally
+    from app.models.rotations import Rotation
+    from app.models.analytics import Analytics
+    from sqlalchemy import delete as sa_delete
+
+    for model in (Rotation, Action, BallTracking, PlayerTracking, Rally, Analytics, Player):
+        await db.execute(sa_delete(model).where(model.match_id == match_id))
+
+    match.status = MatchStatus.processing
+    match.processing_progress = 0
+    match.total_rallies = 0
+    await db.flush()
+    await db.commit()
+
+    background_tasks.add_task(
+        run_analysis,
+        str(match_id),
+        video.file_path,
+        body.court_corners,
+    )
+    return {"message": "Re-analysis started", "match_id": str(match_id)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # WebSocket – real-time progress
 # ─────────────────────────────────────────────────────────────────────────────
 

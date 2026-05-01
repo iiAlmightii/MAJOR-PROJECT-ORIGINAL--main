@@ -149,6 +149,53 @@ class HomographyService:
         ]
         return self.calibrate(src)
 
+    def auto_calibrate_best_of(self, frames: list) -> bool:
+        """
+        Try calibrating from multiple frames, pick the one with lowest
+        reprojection error. Falls back to the first successful calibration
+        if reprojection error cannot be computed.
+
+        Parameters
+        ----------
+        frames : list of np.ndarray
+            Candidate video frames (e.g. 5 frames from the first 30 seconds).
+        """
+        import copy
+
+        best_H     = None
+        best_H_inv = None
+        best_src   = None
+        best_err   = float("inf")
+
+        for frame in frames:
+            probe = HomographyService()
+            success = probe.auto_calibrate_from_lines(frame)
+            if not success or probe._H is None or probe._src_points is None:
+                continue
+
+            # Reprojection error: project src corners through H, compare to DST_POINTS
+            try:
+                src_h = np.hstack([probe._src_points, np.ones((4, 1), dtype=np.float32)])
+                projected = (probe._H @ src_h.T).T
+                projected /= projected[:, 2:3]
+                err = float(np.mean(np.linalg.norm(projected[:, :2] - DST_POINTS, axis=1)))
+            except Exception:
+                err = float("inf")
+
+            if err < best_err:
+                best_err   = err
+                best_H     = probe._H.copy()
+                best_H_inv = probe._H_inv.copy()
+                best_src   = probe._src_points.copy()
+
+        if best_H is not None:
+            self._H          = best_H
+            self._H_inv      = best_H_inv
+            self._src_points = best_src
+            return True
+
+        return False
+
     # ──────────────────────────────────────────────────────────────────────────
     # Transformation helpers
     # ──────────────────────────────────────────────────────────────────────────

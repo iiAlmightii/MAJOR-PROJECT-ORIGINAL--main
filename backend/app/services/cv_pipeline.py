@@ -122,13 +122,23 @@ class CVPipeline:
             self.homography.calibrate(self.court_corners)
             logger.info("Homography: using provided court corners")
         else:
-            sample_pos = min(int(fps * 5), total_frames // 4)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, sample_pos)
-            ret, sample_frame = cap.read()
-            if ret:
-                self.homography.auto_calibrate_from_lines(sample_frame)
+            # Sample 5 frames across the first 30 seconds
+            sample_frames = []
+            sample_duration = min(30.0, total_frames / fps)
+            for i in range(5):
+                pos = int((i / 4) * sample_duration * fps) if i < 4 else int(sample_duration * fps) - 1
+                pos = min(max(pos, 0), total_frames - 1)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
+                ret, f = cap.read()
+                if ret:
+                    sample_frames.append(f)
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            logger.info("Homography: auto-calibrated from frame lines")
+
+            if sample_frames:
+                self.homography.auto_calibrate_best_of(sample_frames)
+                logger.info(f"Homography: multi-frame calibration from {len(sample_frames)} frames")
+            else:
+                logger.warning("Homography: no frames sampled, skipping calibration")
 
         await self._emit(8, "Processing frames...")
 

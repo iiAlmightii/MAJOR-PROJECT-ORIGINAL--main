@@ -105,6 +105,9 @@ export const matchesAPI = {
   transcribeVideo:     (id, language) => api.post(`/matches/${id}/speech/transcribe-video`, null, { params: { language } }),
   transcribeAudio:     (id, formData) => api.post(`/matches/${id}/speech/transcribe`,     formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   runFusion:           (id)           => api.post(`/matches/${id}/speech/fuse`),
+  reanalyze:   (matchId)              => api.post(`/matches/${matchId}/reanalyze`),
+  playerStats: (matchId, playerId)   => api.get(`/matches/${matchId}/players/${playerId}/stats`),
+  setHomography: (matchId, courtCorners) => api.post(`/matches/${matchId}/homography`, { court_corners: courtCorners }),
 }
 
 // ─── Annotations ─────────────────────────────────────────────

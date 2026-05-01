@@ -10,7 +10,7 @@ Endpoints for:
 
 import uuid
 import asyncio
-from typing import Optional, List
+from typing import Optional, List, Dict
 from fastapi import (
     APIRouter, Depends, HTTPException, BackgroundTasks,
     WebSocket, WebSocketDisconnect, Query, Request
@@ -226,6 +226,7 @@ async def get_tracking_data(
                 "player_track_id": player.player_track_id,   # int ByteTrack ID → shows as #3, #7 etc.
                 "team":            player.team,
                 "display_name":    player.display_name,
+                "display_number":  player.display_number,
                 "bbox_x":          pt.bbox_x,
                 "bbox_y":          pt.bbox_y,
                 "bbox_w":          pt.bbox_w,
@@ -432,6 +433,117 @@ async def get_rotations(
 
     rows = (await db.execute(q)).scalars().all()
     return {"rotations": [r.to_dict() for r in rows]}
+
+
+@router.get("/{match_id}/players/{player_id}/stats")
+async def get_player_stats(
+    match_id: uuid.UUID,
+    player_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return aggregated stats for a single player in a match."""
+    from app.models.analytics import Analytics
+    from app.models.actions import Action
+    from sqlalchemy import func
+
+    # Verify player belongs to this match
+    p_result = await db.execute(
+        select(Player).where(Player.id == player_id, Player.match_id == match_id)
+    )
+    player = p_result.scalar_one_or_none()
+    if not player:
+        raise HTTPException(404, "Player not found in this match")
+
+    # Presence
+    presence_result = await db.execute(
+        select(
+            func.count(PlayerTracking.id),
+            func.min(PlayerTracking.timestamp),
+            func.max(PlayerTracking.timestamp),
+        ).where(PlayerTracking.player_id == player_id)
+    )
+    frames_detected, t_min, t_max = presence_result.one()
+    frames_detected = frames_detected or 0
+
+    # Total frames from ball tracking as proxy for total match frames
+    total_frames_result = await db.execute(
+        select(func.count(BallTracking.id)).where(BallTracking.match_id == match_id)
+    )
+    total_frames = total_frames_result.scalar() or 1
+    involvement_pct = round((frames_detected / total_frames) * 100, 1) if total_frames else 0.0
+    time_on_court = round((t_max - t_min) if (t_max and t_min) else 0.0, 1)
+
+    # Actions grouped by type + result
+    actions_result = await db.execute(
+        select(Action.action_type, Action.result, func.count(Action.id))
+        .where(Action.player_id == player_id, Action.match_id == match_id)
+        .group_by(Action.action_type, Action.result)
+    )
+    actions_raw = actions_result.all()
+
+    actions: Dict = {}
+    for action_type, result, count in actions_raw:
+        at = action_type.value if hasattr(action_type, "value") else str(action_type)
+        r  = result.value if hasattr(result, "value") else str(result)
+        if at not in actions:
+            actions[at] = {"total": 0, "success": 0, "error": 0, "neutral": 0}
+        actions[at]["total"] += count
+        if r in actions[at]:
+            actions[at][r] += count
+
+    # Zone counts
+    zones_result = await db.execute(
+        select(Action.zone, func.count(Action.id))
+        .where(Action.player_id == player_id, Action.match_id == match_id, Action.zone.isnot(None))
+        .group_by(Action.zone)
+    )
+    zones = {str(z): c for z, c in zones_result.all()}
+
+    # Efficiency from analytics table
+    analytics_result = await db.execute(
+        select(Analytics).where(
+            Analytics.player_id == player_id,
+            Analytics.match_id == match_id
+        )
+    )
+    analytics = analytics_result.scalar_one_or_none()
+    efficiency = {
+        "attack_eff": float(analytics.attack_efficiency) if analytics else 0.0,
+        "serve_eff":  float(analytics.serve_efficiency) if analytics else 0.0,
+    }
+
+    # Recent actions (last 10)
+    recent_result = await db.execute(
+        select(Action.timestamp, Action.action_type, Action.result)
+        .where(Action.player_id == player_id, Action.match_id == match_id)
+        .order_by(Action.timestamp.desc())
+        .limit(10)
+    )
+    recent_actions = [
+        {
+            "timestamp":   float(ts),
+            "action_type": at.value if hasattr(at, "value") else str(at),
+            "result":      r.value if hasattr(r, "value") else str(r),
+        }
+        for ts, at, r in recent_result.all()
+    ]
+
+    return {
+        "player_id":      str(player_id),
+        "display_number": player.display_number,
+        "team":           player.team,
+        "presence": {
+            "frames_detected":       frames_detected,
+            "total_frames":          total_frames,
+            "involvement_pct":       involvement_pct,
+            "time_on_court_seconds": time_on_court,
+        },
+        "actions":        actions,
+        "zones":          zones,
+        "efficiency":     efficiency,
+        "recent_actions": recent_actions,
+    }
 
 
 @router.post("/{match_id}/homography")

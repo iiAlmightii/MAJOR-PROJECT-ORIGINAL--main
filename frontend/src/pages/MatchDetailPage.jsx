@@ -18,6 +18,7 @@ import useAuthStore from '../store/authStore'
 import { useTrackingData } from '../hooks/useTrackingData'
 import { useAnalysisProgress } from '../hooks/useAnalysisProgress'
 import clsx from 'clsx'
+import CourtCalibrationModal from '../components/Video/CourtCalibrationModal'
 
 const DEFAULT_FILTERS = {
   players: [], actions: [], positions: [], zones: [], timeOffset: null, labels: [],
@@ -234,7 +235,8 @@ function StatPill({ label, value, color = 'blue' }) {
 
 export default function MatchDetailPage() {
   const { id }  = useParams()
-  const userRole = useAuthStore((s) => s.user?.role)
+  const user     = useAuthStore((s) => s.user)
+  const userRole = user?.role
   const canAnalyze = userRole === 'coach' || userRole === 'admin'
   const qc      = useQueryClient()
   const [filterOpen,      setFilterOpen]      = useState(false)
@@ -244,6 +246,8 @@ export default function MatchDetailPage() {
   const [showOverlay,     setShowOverlay]     = useState(true)
   const [courtCorners,    setCourtCorners]    = useState(null)
   const [selectedRallyId, setSelectedRallyId] = useState(null)
+  const [reanalyzing,     setReanalyzing]     = useState(false)
+  const [showCalibration, setShowCalibration] = useState(false)
 
   // ── Data fetching ──────────────────────────────────────────────────────────
   const { data: match, isLoading: matchLoading } = useQuery({
@@ -317,6 +321,23 @@ export default function MatchDetailPage() {
     onSuccess:  () => { toast.success('Analysis started!'); qc.invalidateQueries(['match', id]) },
     onError:    (e) => toast.error(e.response?.data?.detail || 'Failed'),
   })
+
+  // ── Re-analyze handler ────────────────────────────────────────────────────
+  const handleReanalyze = async () => {
+    if (!window.confirm(
+      'This will delete all existing tracking data and re-run analysis. This cannot be undone. Continue?'
+    )) return
+    try {
+      setReanalyzing(true)
+      await matchesAPI.reanalyze(id)
+      qc.invalidateQueries(['match', id])
+      qc.invalidateQueries(['tracking', id])
+    } catch (err) {
+      console.error('Re-analyze failed:', err)
+      alert('Re-analyze failed: ' + (err?.response?.data?.detail || err.message))
+      setReanalyzing(false)
+    }
+  }
 
   // ── Filter rallies ─────────────────────────────────────────────────────────
   const filteredRallies = useMemo(() => {
@@ -445,6 +466,30 @@ export default function MatchDetailPage() {
               >
                 {analyzeMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
                 {match.status === 'completed' ? 'Re-Analyze' : 'Analyze'}
+              </button>
+            )}
+
+            {/* Re-analyze button — admin/coach only */}
+            {(user?.role === 'admin' || user?.role === 'coach') && (
+              <button
+                onClick={handleReanalyze}
+                disabled={reanalyzing || match?.status === 'processing'}
+                className="px-3 py-1.5 text-sm bg-orange-600/20 hover:bg-orange-600/30
+                           text-orange-400 border border-orange-600/30 rounded-lg
+                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {reanalyzing ? 'Starting...' : 'Re-analyze'}
+              </button>
+            )}
+
+            {/* Fix Court Map button — admin/coach only, completed matches only */}
+            {(user?.role === 'admin' || user?.role === 'coach') && match?.status === 'completed' && (
+              <button
+                onClick={() => setShowCalibration(true)}
+                className="px-3 py-1.5 text-sm bg-blue-600/20 hover:bg-blue-600/30
+                           text-blue-400 border border-blue-600/30 rounded-lg transition-colors"
+              >
+                Fix Court Map
               </button>
             )}
 
@@ -664,6 +709,15 @@ export default function MatchDetailPage() {
       {/* Tab: Speech */}
       {activeTab === 'speech' && (
         <SpeechTab matchId={id} matchStatus={match.status} />
+      )}
+
+      {/* Court Calibration Modal */}
+      {showCalibration && (
+        <CourtCalibrationModal
+          matchId={id}
+          videoId={match?.video_id}
+          onClose={() => setShowCalibration(false)}
+        />
       )}
 
       {/* Tab: Analytics */}

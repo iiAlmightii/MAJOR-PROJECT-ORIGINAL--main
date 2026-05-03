@@ -138,20 +138,45 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
 
     // Players on mini-map
     if (data.players) {
-      data.players.forEach(p => {
+      const players = data.players
+      const nullCourtCount = players.filter(p => p.court_x == null).length
+      const totalPlayers   = players.length
+
+      players.forEach(p => {
         if (p.court_x == null || p.court_y == null) return
         const cx = Math.max(0, Math.min(1, p.court_x))
         const cy = Math.max(0, Math.min(1, p.court_y))
         const px = mapX + cx * mapW
         const py = mapY + cy * mapH
+        const dotR = 5
+
+        // Team color
+        ctx.fillStyle = p.team === 'A' ? '#3b82f6' : p.team === 'B' ? '#ef4444' : '#9ca3af'
         ctx.beginPath()
-        ctx.arc(px, py, 4, 0, Math.PI * 2)
-        ctx.fillStyle = p.team === 'A' ? '#3b82f6' : p.team === 'B' ? '#ef4444' : '#94a3b8'
+        ctx.arc(px, py, dotR, 0, Math.PI * 2)
         ctx.fill()
+
+        // Display number inside dot
+        const label = p.display_number != null ? String(p.display_number) : '?'
         ctx.fillStyle = '#fff'
-        ctx.font = 'bold 7px Inter'
-        ctx.fillText(p.player_track_id ?? '?', px - 3, py + 2.5)
+        ctx.font = 'bold 6px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(label, px, py)
       })
+
+      // Warning badge if >30% of players have null court coords
+      if (totalPlayers > 0 && nullCourtCount / totalPlayers > 0.3) {
+        ctx.fillStyle = 'rgba(251,191,36,0.9)'
+        ctx.font = 'bold 9px sans-serif'
+        ctx.textAlign = 'right'
+        ctx.textBaseline = 'top'
+        ctx.fillText('⚠', mapX + mapW - 2, mapY + 2)
+      }
+
+      // Reset text alignment for subsequent drawing code
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'alphabetic'
     }
 
     // Ball on mini-map

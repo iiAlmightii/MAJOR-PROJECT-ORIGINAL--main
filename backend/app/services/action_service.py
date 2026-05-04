@@ -8,7 +8,7 @@ Two-mode action recogniser:
     Training: training/action_recognition/run_phase3_pipeline.py
 
   Mode B — YOLO detector fallback (frame-level, no LSTM needed):
-    Requires: models/weights/action_detection.pt
+    Requires: models/weights/best.pt, action_detection.pt, or last.pt
     Training: training/action_recognition/train_action_v2.py   ← USE THIS
               (trains on Dataset/Action recognition/ — 11k images, 5 classes)
     Classes: block, defense, serve, set, spike  (clean, no noise)
@@ -30,7 +30,12 @@ ROOT              = Path(__file__).resolve().parent.parent.parent.parent
 # Prefer phase 2 (all 5 classes) over phase 1 (spike only)
 _W = ROOT / "models" / "weights"
 WEIGHTS_PATH      = _W / "action_lstm_phase2.pt" if (_W / "action_lstm_phase2.pt").exists() else _W / "action_lstm_phase1.pt"
-YOLO_ACTION_WEIGHTS = ROOT / "models" / "weights" / "action_detection.pt"
+YOLO_ACTION_CANDIDATES = [
+    _W / "action_yolo_best.pt",   # renamed from best.pt (7-class action YOLO)
+    _W / "action_detection.pt",   # larger 22 MB variant
+    _W / "action_yolo_last.pt",   # last-epoch fallback
+]
+YOLO_ACTION_WEIGHTS = next((p for p in YOLO_ACTION_CANDIDATES if p.exists()), YOLO_ACTION_CANDIDATES[0])
 CLASS_MAP_PATH    = ROOT / "training" / "action_recognition" / "models" / "class_map.json"
 
 NUM_FRAMES   = 30
@@ -95,7 +100,7 @@ class ActionService:
 
         logger.warning(
             "ActionService: no weights found. "
-            "Train action_detection.pt via: python training/action_recognition/train_action_v2.py "
+            "Train best.pt/action_detection.pt via: python training/action_recognition/train_action_v2.py "
             "or action_lstm_phase1.pt via: python training/action_recognition/run_phase3_pipeline.py"
         )
         return False

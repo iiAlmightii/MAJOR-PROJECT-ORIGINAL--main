@@ -96,22 +96,6 @@ async def run_analysis(
     try:
         summary = await pipeline.run()
         logger.info(f"Analysis done for match {match_id}: {summary}")
-
-        # Post-processing: merge ghost tracks, prune to ≤16, assign display numbers
-        await progress_cb(95, "Merging and deduplicating player tracks...")
-        from app.services.track_merger import merge_tracks
-        merge_summary = await merge_tracks(match_id)
-        logger.info(f"TrackMerger result: {merge_summary}")
-
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(select(Match).where(Match.id == uuid.UUID(match_id)))
-            m = result.scalar_one_or_none()
-            if m:
-                m.status = MatchStatus.completed
-                await db.commit()
-
-        await _broadcast(match_id, 100, "Analysis complete!")
-
     except Exception as exc:
         logger.error(f"Analysis failed for match {match_id}: {exc}", exc_info=True)
         async with AsyncSessionLocal() as db:
@@ -121,3 +105,23 @@ async def run_analysis(
                 m.status = MatchStatus.failed
                 await db.commit()
         await _broadcast(match_id, -1, f"Analysis failed: {exc}", failed=True)
+        return
+
+    # Post-processing: merge ghost tracks, prune to ≤16, assign display numbers
+    # Runs outside the main try block so a merger crash never marks analysis as failed
+    await progress_cb(95, "Merging and deduplicating player tracks...")
+    try:
+        from app.services.track_merger import merge_tracks
+        merge_summary = await merge_tracks(match_id)
+        logger.info(f"TrackMerger result: {merge_summary}")
+    except Exception as merge_exc:
+        logger.error(f"TrackMerger failed (non-fatal): {merge_exc}", exc_info=True)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Match).where(Match.id == uuid.UUID(match_id)))
+        m = result.scalar_one_or_none()
+        if m:
+            m.status = MatchStatus.completed
+            await db.commit()
+
+    await _broadcast(match_id, 100, "Analysis complete!")

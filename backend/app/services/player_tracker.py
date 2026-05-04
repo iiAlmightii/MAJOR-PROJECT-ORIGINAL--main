@@ -36,26 +36,25 @@ REFEREE_WEIGHTS   = os.path.join(WEIGHTS_DIR, "referee_detection.pt")
 FALLBACK_WEIGHTS  = "yolov8n.pt"        # auto-downloaded by ultralytics
 
 PERSON_CLASS_ID   = 0                   # COCO class 0 = person
-CONF_THRESHOLD    = 0.50   # raised from 0.45 — reduces audience false positives
+CONF_THRESHOLD    = 0.50
 IOU_THRESHOLD     = 0.45
 REFEREE_IOU_THRESH = 0.30               # overlap with referee box → suppress player
-MAX_TRACKS        = 16     # 12 players + 2 refs + 2 coaches hard ceiling
+MAX_TRACKS        = 16     # 12 players + up to 4 sideline staff hard ceiling
 
-# Court boundary margins: allow detections slightly outside the court
-# (homography calibration is imperfect) but reject clear audience members.
-# Values are in normalised court coords (0=near side, 1=far side).
-COURT_X_MIN = -0.25
-COURT_X_MAX =  1.25
-COURT_Y_MIN = -0.30   # allow some area above the court (players jump)
-COURT_Y_MAX =  1.30
+# Court boundary margins in normalised court coords (used when homography IS calibrated).
+# Tighter than before so sideline coaches/refs are excluded.
+COURT_X_MIN = -0.10
+COURT_X_MAX =  1.10
+COURT_Y_MIN = -0.15   # allow a little above the court (jumping)
+COURT_Y_MAX =  1.15
 
-# Court boundary margins: allow detections slightly outside the court
-# (homography calibration is imperfect) but reject clear audience members.
-# Values are in normalised court coords (0=near side, 1=far side).
-COURT_X_MIN = -0.25
-COURT_X_MAX =  1.25
-COURT_Y_MIN = -0.30   # allow some area above the court (players jump)
-COURT_Y_MAX =  1.30
+# Pixel-space heuristics applied regardless of homography calibration.
+# These catch audience members, camera operators, and scoreboard staff
+# without needing a calibrated court map.
+MIN_HEIGHT_FRACTION  = 0.08   # bbox_h must be ≥ 8% of frame height
+FEET_Y_MIN_FRACTION  = 0.30   # feet (bbox_y+bbox_h) must be below top 30% of frame
+EDGE_X_MARGIN        = 0.05   # reject if bbox center_x < 5% or > 95% of frame width
+MAX_WIDTH_HEIGHT_RATIO = 1.5  # reject if bbox is wider than 1.5× its height (not a standing person)
 
 
 class PlayerTracker:
@@ -180,22 +179,33 @@ class PlayerTracker:
                 tid  = int(detections.tracker_id[i]) if detections.tracker_id is not None else i
                 conf = float(detections.confidence[i]) if detections.confidence is not None else 0.0
 
+                frame_h, frame_w = frame.shape[:2]
+
+                # ── Pixel-space heuristics (always applied, no homography needed) ──
+                # Reject boxes that are too small
+                if bh < frame_h * MIN_HEIGHT_FRACTION:
+                    continue
+                # Reject boxes wider than tall (not a standing person)
+                if bw > bh * MAX_WIDTH_HEIGHT_RATIO:
+                    continue
+                # Reject if feet (bottom of box) are in the top 30% — audience/scaffolding
+                feet_y = by + bh
+                if feet_y < frame_h * FEET_Y_MIN_FRACTION:
+                    continue
+                # Reject detections at extreme left/right edges (sideline equipment/staff)
+                center_x = bx + bw / 2
+                if center_x < frame_w * EDGE_X_MARGIN or center_x > frame_w * (1 - EDGE_X_MARGIN):
+                    continue
+
+                # ── Homography-based court boundary filter ───────────────────────
                 cx, cy = -1.0, -1.0
                 if homography and homography.is_calibrated():
                     cx, cy = homography.transform_bbox_center(bx, by, bw, bh)
-                    # Skip detections clearly outside the court (audience members,
-                    # referees near the sideline, scoreboard operators, etc.)
                     if not (COURT_X_MIN <= cx <= COURT_X_MAX and
                             COURT_Y_MIN <= cy <= COURT_Y_MAX):
                         continue
 
-                # Skip very small boxes — likely crowd noise, not players
-                frame_h, frame_w = frame.shape[:2]
-                min_height_px = frame_h * 0.06   # player must be ≥6% of frame height
-                if bh < min_height_px:
-                    continue
-
-                # Suppress if this box overlaps a detected referee
+                # ── Referee suppression ──────────────────────────────────────────
                 if referee_boxes and self._iou_any([bx, by, bx+bw, by+bh], referee_boxes) > REFEREE_IOU_THRESH:
                     continue
 

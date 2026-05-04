@@ -337,6 +337,10 @@ class CVPipeline:
                 if len(hues) >= 5:
                     track_hues[tid] = float(np.median(hues))
 
+            MIN_HUE_GAP  = 20.0  # hue degrees — smaller gap → colours too similar to cluster
+            MIN_TEAM_SIZE = 2     # each group must have ≥2 players or we reject the split
+
+            use_hue_split = False
             if len(track_hues) >= 2:
                 # Step 2: sort by hue, find the largest gap → team boundary
                 sorted_items = sorted(track_hues.items(), key=lambda x: x[1])
@@ -349,22 +353,28 @@ class CVPipeline:
                 group1 = {t for t, _ in sorted_items[: max_gap_idx + 1]}
                 group2 = {t for t, _ in sorted_items[max_gap_idx + 1 :]}
 
-                # Step 3: label groups as A/B using court_x (lower avg_x = Team A)
-                def grp_avg_x(tids: set) -> float:
-                    xs = [r["court_x"] for r in player_rows
-                          if r["track_id"] in tids and r.get("court_x") is not None]
-                    return (sum(xs) / len(xs)) if xs else 0.5
+                if (max_gap >= MIN_HUE_GAP
+                        and len(group1) >= MIN_TEAM_SIZE
+                        and len(group2) >= MIN_TEAM_SIZE):
+                    use_hue_split = True
 
-                g1x, g2x = grp_avg_x(group1), grp_avg_x(group2)
-                if g1x <= g2x:
-                    team_map.update({t: "A" for t in group1})
-                    team_map.update({t: "B" for t in group2})
-                else:
-                    team_map.update({t: "B" for t in group1})
-                    team_map.update({t: "A" for t in group2})
+                    # Step 3: label groups as A/B using court_x (lower avg_x = Team A)
+                    def grp_avg_x(tids: set) -> float:
+                        xs = [r["court_x"] for r in player_rows
+                              if r["track_id"] in tids and r.get("court_x") is not None]
+                        return (sum(xs) / len(xs)) if xs else 0.5
 
-            # Step 4: tracks with no hue signal → fall back to court_x position
-            for tid in track_ids - set(track_hues.keys()):
+                    g1x, g2x = grp_avg_x(group1), grp_avg_x(group2)
+                    if g1x <= g2x:
+                        team_map.update({t: "A" for t in group1})
+                        team_map.update({t: "B" for t in group2})
+                    else:
+                        team_map.update({t: "B" for t in group1})
+                        team_map.update({t: "A" for t in group2})
+
+            # Step 4: tracks with no hue signal (or hue split was rejected) → court_x position
+            hue_assigned = set(team_map.keys())
+            for tid in track_ids - hue_assigned:
                 court_xs = [r["court_x"] for r in player_rows
                              if r["track_id"] == tid and r.get("court_x") is not None]
                 if court_xs:

@@ -94,8 +94,8 @@ class PlayerTracker:
             self._tracker = sv.ByteTrack(
                 track_activation_threshold=CONF_THRESHOLD,
                 lost_track_buffer=120,
-                minimum_matching_threshold=0.65,
-                frame_rate=25,
+                minimum_matching_threshold=0.50,
+                frame_rate=8,
             )
 
             # Load referee suppressor if weights available
@@ -118,8 +118,8 @@ class PlayerTracker:
             self._tracker = sv.ByteTrack(
                 track_activation_threshold=CONF_THRESHOLD,
                 lost_track_buffer=120,
-                minimum_matching_threshold=0.65,
-                frame_rate=25,
+                minimum_matching_threshold=0.50,
+                frame_rate=8,
             )
 
     def process_frame(

@@ -72,7 +72,7 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
         ctx.strokeRect(x, y, w, h)
 
         // Label background
-        const labelText = `#${p.player_track_id ?? '?'}`
+        const labelText = `#${p.display_number ?? p.player_track_id ?? '?'}`
         ctx.font = 'bold 11px Inter'
         const labelW = ctx.measureText(labelText).width + 6
         ctx.fillStyle = boxColor + 'cc'
@@ -84,16 +84,19 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
       })
     }
 
-    // Draw ball
+    // Draw ball (only if detection is recent — within 2 seconds of current video time)
     if (trackingData.ball) {
       const b = trackingData.ball
-      ctx.beginPath()
-      ctx.arc(b.x * scaleX, b.y * scaleY, 8, 0, Math.PI * 2)
-      ctx.fillStyle = '#facc15cc'
-      ctx.fill()
-      ctx.strokeStyle = '#fbbf24'
-      ctx.lineWidth = 2
-      ctx.stroke()
+      const vt = videoRef.current?.currentTime ?? 0
+      if (b.timestamp == null || Math.abs(b.timestamp - vt) <= 2.0) {
+        ctx.beginPath()
+        ctx.arc(b.x * scaleX, b.y * scaleY, 8, 0, Math.PI * 2)
+        ctx.fillStyle = '#facc15cc'
+        ctx.fill()
+        ctx.strokeStyle = '#fbbf24'
+        ctx.lineWidth = 2
+        ctx.stroke()
+      }
     }
 
     // Draw homography mini-map (bottom-right)
@@ -101,10 +104,10 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
   }, [trackingData])
 
   const drawMiniMap = (ctx, cw, ch, data) => {
-    const mapW = 160
-    const mapH = 100
-    const mapX = cw - mapW - 12
-    const mapY = ch - mapH - 12
+    const mapW = 260
+    const mapH = 162
+    const mapX = cw - mapW - 14
+    const mapY = ch - mapH - 14
 
     // Background
     ctx.fillStyle = 'rgba(10,15,25,0.85)'
@@ -148,7 +151,7 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
         const cy = Math.max(0, Math.min(1, p.court_y))
         const px = mapX + cx * mapW
         const py = mapY + cy * mapH
-        const dotR = 5
+        const dotR = 6
 
         // Team color
         ctx.fillStyle = p.team === 'A' ? '#3b82f6' : p.team === 'B' ? '#ef4444' : '#9ca3af'
@@ -179,20 +182,23 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
       ctx.textBaseline = 'alphabetic'
     }
 
-    // Ball on mini-map
+    // Ball on mini-map (only if detection is recent)
     if (data.ball?.court_x != null) {
-      const bx = mapX + data.ball.court_x * mapW
-      const by = mapY + data.ball.court_y * mapH
-      ctx.beginPath()
-      ctx.arc(bx, by, 3, 0, Math.PI * 2)
-      ctx.fillStyle = '#facc15'
-      ctx.fill()
+      const vt = videoRef.current?.currentTime ?? 0
+      if (data.ball.timestamp == null || Math.abs(data.ball.timestamp - vt) <= 2.0) {
+        const bx = mapX + data.ball.court_x * mapW
+        const by = mapY + data.ball.court_y * mapH
+        ctx.beginPath()
+        ctx.arc(bx, by, 4, 0, Math.PI * 2)
+        ctx.fillStyle = '#facc15'
+        ctx.fill()
+      }
     }
 
     // Label
     ctx.fillStyle = '#64748b'
-    ctx.font = '8px Inter'
-    ctx.fillText('COURT VIEW', mapX + 4, mapY + 10)
+    ctx.font = '9px Inter'
+    ctx.fillText('COURT VIEW', mapX + 5, mapY + 11)
   }
 
   // Animate overlays in sync with video

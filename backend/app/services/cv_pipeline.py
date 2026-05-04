@@ -225,6 +225,7 @@ class CVPipeline:
                         "confidence": p["confidence"],
                         "court_x": p.get("court_x"),
                         "court_y": p.get("court_y"),
+                        "jersey_hue": p.get("jersey_hue", -1.0),
                     })
 
                 for a in actions:
@@ -323,15 +324,56 @@ class CVPipeline:
 
             # ── Players ─────────────────────────────────────────────────────
             track_ids = {r["track_id"] for r in player_rows}
-            for tid in track_ids:
-                # Determine team from court_x position (rough: <0.5 = Team A)
-                rows_for_tid = [r for r in player_rows if r["track_id"] == tid]
-                court_xs = [r["court_x"] for r in rows_for_tid if r.get("court_x") is not None]
-                team = None
-                if court_xs:
-                    avg_x = sum(court_xs) / len(court_xs)
-                    team = "A" if avg_x < 0.5 else "B"
 
+            # Team assignment: jersey-colour K-means (gap-finding) with
+            # court-position fallback so no sklearn dependency is needed.
+            team_map: Dict[int, Optional[str]] = {}
+
+            # Step 1: median jersey hue per track
+            track_hues: Dict[int, float] = {}
+            for tid in track_ids:
+                hues = [r["jersey_hue"] for r in player_rows
+                        if r["track_id"] == tid and r.get("jersey_hue", -1) >= 0]
+                if len(hues) >= 5:
+                    track_hues[tid] = float(np.median(hues))
+
+            if len(track_hues) >= 2:
+                # Step 2: sort by hue, find the largest gap → team boundary
+                sorted_items = sorted(track_hues.items(), key=lambda x: x[1])
+                max_gap = max_gap_idx = 0
+                for i in range(len(sorted_items) - 1):
+                    gap = sorted_items[i + 1][1] - sorted_items[i][1]
+                    if gap > max_gap:
+                        max_gap = gap
+                        max_gap_idx = i
+                group1 = {t for t, _ in sorted_items[: max_gap_idx + 1]}
+                group2 = {t for t, _ in sorted_items[max_gap_idx + 1 :]}
+
+                # Step 3: label groups as A/B using court_x (lower avg_x = Team A)
+                def grp_avg_x(tids: set) -> float:
+                    xs = [r["court_x"] for r in player_rows
+                          if r["track_id"] in tids and r.get("court_x") is not None]
+                    return (sum(xs) / len(xs)) if xs else 0.5
+
+                g1x, g2x = grp_avg_x(group1), grp_avg_x(group2)
+                if g1x <= g2x:
+                    team_map.update({t: "A" for t in group1})
+                    team_map.update({t: "B" for t in group2})
+                else:
+                    team_map.update({t: "B" for t in group1})
+                    team_map.update({t: "A" for t in group2})
+
+            # Step 4: tracks with no hue signal → fall back to court_x position
+            for tid in track_ids - set(track_hues.keys()):
+                court_xs = [r["court_x"] for r in player_rows
+                             if r["track_id"] == tid and r.get("court_x") is not None]
+                if court_xs:
+                    team_map[tid] = "A" if (sum(court_xs) / len(court_xs)) < 0.5 else "B"
+                else:
+                    team_map[tid] = None
+
+            for tid in track_ids:
+                team = team_map.get(tid)
                 player = Player(
                     match_id=uuid.UUID(self.match_id),
                     player_track_id=tid,

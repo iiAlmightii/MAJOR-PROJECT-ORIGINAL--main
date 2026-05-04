@@ -53,7 +53,7 @@ COURT_Y_MAX =  1.15
 # without needing a calibrated court map.
 MIN_HEIGHT_FRACTION  = 0.08   # bbox_h must be ≥ 8% of frame height
 FEET_Y_MIN_FRACTION  = 0.30   # feet (bbox_y+bbox_h) must be below top 30% of frame
-EDGE_X_MARGIN        = 0.05   # reject if bbox center_x < 5% or > 95% of frame width
+EDGE_X_MARGIN        = 0.09   # reject if bbox center_x < 9% or > 91% of frame width
 MAX_WIDTH_HEIGHT_RATIO = 1.5  # reject if bbox is wider than 1.5× its height (not a standing person)
 
 
@@ -196,6 +196,10 @@ class PlayerTracker:
                 center_x = bx + bw / 2
                 if center_x < frame_w * EDGE_X_MARGIN or center_x > frame_w * (1 - EDGE_X_MARGIN):
                     continue
+                # Reject small elevated boxes — scoreboard staff / elevated refs
+                # (head above top 22% AND box height < 22% = not a court player)
+                if by < frame_h * 0.22 and bh < frame_h * 0.22:
+                    continue
 
                 # ── Homography-based court boundary filter ───────────────────────
                 cx, cy = -1.0, -1.0
@@ -209,6 +213,9 @@ class PlayerTracker:
                 if referee_boxes and self._iou_any([bx, by, bx+bw, by+bh], referee_boxes) > REFEREE_IOU_THRESH:
                     continue
 
+                # ── Jersey hue (for team clustering downstream) ──────────────────
+                jersey_hue = self._sample_jersey_hue(frame, bx, by, bw, bh)
+
                 output.append({
                     "track_id":    tid,
                     "bbox_x":      bx,
@@ -220,6 +227,7 @@ class PlayerTracker:
                     "court_y":     cy if cy >= 0 else None,
                     "frame_number":frame_idx,
                     "timestamp":   round(timestamp, 4),
+                    "jersey_hue":  jersey_hue,
                 })
 
             # Hard cap: keep only the MAX_TRACKS detections with highest confidence
@@ -249,6 +257,38 @@ class PlayerTracker:
             iou = inter / union if union > 0 else 0.0
             best = max(best, iou)
         return best
+
+    @staticmethod
+    def _sample_jersey_hue(
+        frame: np.ndarray, bx: float, by: float, bw: float, bh: float
+    ) -> float:
+        """
+        Extract the dominant jersey hue (0-180) from the torso region of a bbox.
+        Uses circular mean over saturated pixels only.
+        Returns -1.0 if the jersey has no distinctive colour (white/black/gray).
+        """
+        fh, fw = frame.shape[:2]
+        x1 = max(0, int(bx + bw * 0.15))
+        x2 = min(fw, int(bx + bw * 0.85))
+        y1 = max(0, int(by + bh * 0.20))  # skip head
+        y2 = min(fh, int(by + bh * 0.65))  # skip legs
+        if x2 <= x1 or y2 <= y1:
+            return -1.0
+        torso = frame[y1:y2, x1:x2]
+        if torso.size < 100:
+            return -1.0
+        try:
+            hsv = cv2.cvtColor(torso, cv2.COLOR_BGR2HSV)
+            sat  = hsv[:, :, 1]
+            hue  = hsv[:, :, 0].astype(np.float32)
+            mask = sat > 50
+            if mask.sum() < 20:
+                return -1.0  # mostly unsaturated = white/gray/black jersey
+            h_rad = hue[mask] * (np.pi / 90.0)
+            circ_hue = np.arctan2(np.sin(h_rad).mean(), np.cos(h_rad).mean())
+            return float(circ_hue * 90.0 / np.pi % 180.0)
+        except Exception:
+            return -1.0
 
     # ──────────────────────────────────────────────────────────────────────────
     # Annotation helper (writes boxes + IDs onto the frame in-place)

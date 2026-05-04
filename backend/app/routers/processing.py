@@ -481,6 +481,7 @@ async def get_player_stats(
         if vid and vid.duration:
             video_duration = float(vid.duration)
 
+    total_frames = 0  # may be updated in elif branch below
     if video_duration and video_duration > 0:
         involvement_pct = round(((t_max or 0) - (t_min or 0)) / video_duration * 100, 1)
     elif frames_detected > 0 and (t_max and t_min):

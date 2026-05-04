@@ -212,8 +212,13 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
   const togglePlay = () => {
     const v = videoRef.current
     if (!v) return
-    v.paused ? v.play() : v.pause()
-    setPlaying(!v.paused)
+    if (v.paused) {
+      v.play().catch(() => {})
+      setPlaying(true)
+    } else {
+      v.pause()
+      setPlaying(false)
+    }
   }
 
   const seek = (e) => {
@@ -303,9 +308,12 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
         ref={videoRef}
         src={videoSrc}
         className="w-full aspect-video"
+        preload="auto"
+        playsInline
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
+        onError={(e) => console.error('Video error:', e.target.error)}
       />
 
       {/* Tracking overlay canvas — always rendered so clicks toggle play when no overlay */}

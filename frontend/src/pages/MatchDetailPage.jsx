@@ -460,25 +460,16 @@ export default function MatchDetailPage() {
 
             {canAnalyze && !isProcessing && (
               <button
-                onClick={() => analyzeMut.mutate()}
-                disabled={analyzeMut.isPending}
+                onClick={() => match.status === 'completed' ? handleReanalyze() : analyzeMut.mutate()}
+                disabled={analyzeMut.isPending || reanalyzing}
                 className="btn-primary flex items-center gap-2 text-sm"
               >
-                {analyzeMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                {match.status === 'completed' ? 'Re-Analyze' : 'Analyze'}
-              </button>
-            )}
-
-            {/* Re-analyze button — admin/coach only */}
-            {(user?.role === 'admin' || user?.role === 'coach') && (
-              <button
-                onClick={handleReanalyze}
-                disabled={reanalyzing || match?.status === 'processing'}
-                className="px-3 py-1.5 text-sm bg-orange-600/20 hover:bg-orange-600/30
-                           text-orange-400 border border-orange-600/30 rounded-lg
-                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {reanalyzing ? 'Starting...' : 'Re-analyze'}
+                {(analyzeMut.isPending || reanalyzing)
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Zap className="w-4 h-4" />}
+                {(analyzeMut.isPending || reanalyzing)
+                  ? 'Starting...'
+                  : match.status === 'completed' ? 'Re-Analyze' : 'Analyze'}
               </button>
             )}
 

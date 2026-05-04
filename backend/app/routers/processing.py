@@ -466,12 +466,32 @@ async def get_player_stats(
     frames_detected, t_min, t_max = presence_result.one()
     frames_detected = frames_detected or 0
 
-    # Total frames from ball tracking as proxy for total match frames
-    total_frames_result = await db.execute(
-        select(func.count(BallTracking.id)).where(BallTracking.match_id == match_id)
+    # Use video duration (from match→video) as the involvement denominator.
+    # Fall back to ball-tracking row count if video metadata is unavailable.
+    match_result = await db.execute(
+        select(Match).where(Match.id == match_id)
     )
-    total_frames = total_frames_result.scalar() or 1
-    involvement_pct = round((frames_detected / total_frames) * 100, 1) if total_frames else 0.0
+    match_obj = match_result.scalar_one_or_none()
+    video_duration = None
+    if match_obj and match_obj.video_id:
+        vid_result = await db.execute(
+            select(Video).where(Video.id == match_obj.video_id)
+        )
+        vid = vid_result.scalar_one_or_none()
+        if vid and vid.duration:
+            video_duration = float(vid.duration)
+
+    if video_duration and video_duration > 0:
+        involvement_pct = round(((t_max or 0) - (t_min or 0)) / video_duration * 100, 1)
+    elif frames_detected > 0 and (t_max and t_min):
+        # Approximate using time-on-court vs total tracked time span across all players
+        total_frames_result = await db.execute(
+            select(func.count(BallTracking.id)).where(BallTracking.match_id == match_id)
+        )
+        total_frames = total_frames_result.scalar() or 1
+        involvement_pct = round((frames_detected / total_frames) * 100, 1)
+    else:
+        involvement_pct = 0.0
     time_on_court = round((t_max - t_min) if (t_max and t_min) else 0.0, 1)
 
     # Actions grouped by type + result

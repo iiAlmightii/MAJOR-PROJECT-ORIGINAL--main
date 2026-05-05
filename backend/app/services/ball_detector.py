@@ -10,11 +10,15 @@ Trajectory smoothing is applied with a Kalman-like exponential smoother.
 """
 
 import os
+import math
 import logging
 from collections import deque
 from typing import Optional, Dict, Any, List, Tuple
 import numpy as np
 import cv2
+
+COURT_WIDTH_M  = 9.0    # volleyball court width in metres
+COURT_HEIGHT_M = 18.0   # volleyball court length in metres
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,9 @@ class BallDetector:
         self._trajectory: deque = deque(maxlen=TRAJECTORY_LEN)
         self._use_custom = False
         self._device = "cpu"
+        self._prev_court_x: Optional[float] = None
+        self._prev_court_y: Optional[float] = None
+        self._prev_timestamp: Optional[float] = None
 
     def load(self) -> bool:
         if not CV_AVAILABLE:
@@ -76,6 +83,9 @@ class BallDetector:
         self._prev_x = None
         self._prev_y = None
         self._trajectory.clear()
+        self._prev_court_x = None
+        self._prev_court_y = None
+        self._prev_timestamp = None
 
     def detect(
         self,
@@ -117,6 +127,27 @@ class BallDetector:
         if homography and homography.is_calibrated():
             cx, cy = homography.frame_to_court(rx, ry)
 
+        # Compute instantaneous speed from consecutive court positions
+        speed_kmh, vx_norm, vy_norm = None, None, None
+        if (cx >= 0 and cy >= 0
+                and self._prev_court_x is not None
+                and self._prev_timestamp is not None):
+            dt = timestamp - self._prev_timestamp
+            if dt > 0:
+                dcx = cx - self._prev_court_x
+                dcy = cy - self._prev_court_y
+                dx_m = dcx * COURT_WIDTH_M
+                dy_m = dcy * COURT_HEIGHT_M
+                speed_ms = math.sqrt(dx_m ** 2 + dy_m ** 2) / dt
+                speed_kmh = round(speed_ms * 3.6, 1)
+                vx_norm = round(dcx / dt, 4)
+                vy_norm = round(dcy / dt, 4)
+
+        if cx >= 0:
+            self._prev_court_x = cx
+            self._prev_court_y = cy
+            self._prev_timestamp = timestamp
+
         return {
             "x":           round(rx, 2),
             "y":           round(ry, 2),
@@ -124,6 +155,9 @@ class BallDetector:
             "confidence":  result.get("confidence", 0.0),
             "court_x":     round(cx, 4) if cx >= 0 else None,
             "court_y":     round(cy, 4) if cy >= 0 else None,
+            "speed_kmh":   speed_kmh,
+            "vx":          vx_norm,
+            "vy":          vy_norm,
             "frame_number":frame_idx,
             "timestamp":   round(timestamp, 4),
             "trajectory":  list(self._trajectory),

@@ -95,6 +95,39 @@ async def _assign_landing_zones_pure(actions, ball_rows):
             )
 
 
+def compute_player_movement(tracking_rows):
+    """
+    Compute distance and speed for one player from sorted PlayerTracking rows.
+    tracking_rows: list/sequence with .court_x, .court_y, .timestamp attributes.
+    Returns (distance_m, avg_speed_kmh, max_speed_kmh).
+    """
+    import math as _math
+    COURT_W = 9.0
+    COURT_H = 18.0
+    MAX_SPEED_CAP = 40.0   # km/h — above this is sensor noise, not a human
+    MAX_GAP_S = 2.0         # seconds — bigger gaps = player was lost, skip
+
+    total_dist = 0.0
+    speeds = []
+    for i in range(1, len(tracking_rows)):
+        prev, cur = tracking_rows[i - 1], tracking_rows[i]
+        if None in (prev.court_x, prev.court_y, cur.court_x, cur.court_y):
+            continue
+        dt = cur.timestamp - prev.timestamp
+        if dt <= 0 or dt > MAX_GAP_S:
+            continue
+        dx_m = (cur.court_x - prev.court_x) * COURT_W
+        dy_m = (cur.court_y - prev.court_y) * COURT_H
+        dist = _math.sqrt(dx_m ** 2 + dy_m ** 2)
+        total_dist += dist
+        speed_kmh = (dist / dt) * 3.6
+        if speed_kmh < MAX_SPEED_CAP:
+            speeds.append(speed_kmh)
+    avg_speed = round(sum(speeds) / len(speeds), 1) if speeds else 0.0
+    max_speed = round(max(speeds), 1) if speeds else 0.0
+    return round(total_dist, 1), avg_speed, max_speed
+
+
 class CVPipeline:
     """
     Full CV pipeline for one match video.
@@ -329,6 +362,9 @@ class CVPipeline:
 
         await self._emit(90, "Computing match analytics & scoring...")
         await self._run_scoring(player_id_map, action_rows, completed_rallies)
+
+        await self._emit(91, "Computing player movement analytics...")
+        await self._compute_player_movement()
 
         await self._emit(93, "Fusing CV events with any existing speech events...")
         await self._run_speech_fusion(action_rows)
@@ -606,6 +642,86 @@ class CVPipeline:
             await _assign_landing_zones_pure(actions, balls)
             await db.commit()
             logger.info(f"Landing zones assigned for match {self.match_id}")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Player movement post-processing
+    # ──────────────────────────────────────────────────────────────────────────
+
+    async def _compute_player_movement(self):
+        """Post-processing: compute distance/speed/reception-aggregates per player."""
+        from app.database import AsyncSessionLocal
+        from app.models.tracking import PlayerTracking
+        from app.models.analytics import Analytics
+        from app.models.actions import Action
+        from app.models.player import Player
+        from sqlalchemy import select
+        import uuid
+
+        async with AsyncSessionLocal() as db:
+            # Load all players for this match
+            p_res = await db.execute(
+                select(Player).where(Player.match_id == uuid.UUID(self.match_id))
+            )
+            players = p_res.scalars().all()
+
+            for player in players:
+                # PlayerTracking rows sorted by timestamp
+                tr_res = await db.execute(
+                    select(PlayerTracking)
+                    .where(PlayerTracking.player_id == player.id)
+                    .order_by(PlayerTracking.timestamp)
+                )
+                tracking_rows = tr_res.scalars().all()
+                dist_m, avg_spd, max_spd = compute_player_movement(tracking_rows)
+
+                # Action-based speed aggregates
+                act_res = await db.execute(
+                    select(Action).where(
+                        Action.player_id == player.id,
+                        Action.match_id == uuid.UUID(self.match_id),
+                    )
+                )
+                player_actions = act_res.scalars().all()
+
+                serve_speeds = [
+                    a.ball_speed_kmh for a in player_actions
+                    if getattr(a.action_type, "value", a.action_type) == "serve"
+                    and a.ball_speed_kmh
+                ]
+                attack_speeds = [
+                    a.ball_speed_kmh for a in player_actions
+                    if getattr(a.action_type, "value", a.action_type) == "attack"
+                    and a.ball_speed_kmh
+                ]
+                rq_vals = [
+                    a.reception_quality for a in player_actions
+                    if a.reception_quality is not None
+                ]
+
+                # Update Analytics row
+                ana_res = await db.execute(
+                    select(Analytics).where(
+                        Analytics.player_id == player.id,
+                        Analytics.match_id == uuid.UUID(self.match_id),
+                    )
+                )
+                analytics = ana_res.scalar_one_or_none()
+                if analytics:
+                    analytics.distance_covered_m = dist_m
+                    analytics.avg_speed_kmh = avg_spd
+                    analytics.max_speed_kmh = max_spd
+                    analytics.avg_serve_speed_kmh = (
+                        round(sum(serve_speeds) / len(serve_speeds), 1) if serve_speeds else None
+                    )
+                    analytics.avg_attack_speed_kmh = (
+                        round(sum(attack_speeds) / len(attack_speeds), 1) if attack_speeds else None
+                    )
+                    analytics.reception_quality_avg = (
+                        round(sum(rq_vals) / len(rq_vals), 2) if rq_vals else None
+                    )
+
+            await db.commit()
+            logger.info(f"Player movement computed for match {self.match_id}")
 
     # ──────────────────────────────────────────────────────────────────────────
     # Scoring Engine

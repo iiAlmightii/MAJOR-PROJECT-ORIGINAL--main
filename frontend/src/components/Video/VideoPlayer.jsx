@@ -54,6 +54,13 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
     canvas.height = video.videoHeight || video.clientHeight
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
+    const speedColor = (kmh) => {
+      if (kmh == null)    return 'rgba(200,200,200,0.8)'
+      if (kmh < 40)       return 'rgba(80,200,80,0.9)'
+      if (kmh < 70)       return 'rgba(255,200,0,0.9)'
+      return 'rgba(255,60,60,0.9)'
+    }
+
     const scaleX = canvas.width  / video.videoWidth
     const scaleY = canvas.height / video.videoHeight
 
@@ -84,18 +91,55 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
       })
     }
 
-    // Draw ball (only if detection is recent — within 2 seconds of current video time)
+    // Draw ball trajectory arc + speed badge
     if (trackingData.ball) {
       const b = trackingData.ball
       const vt = videoRef.current?.currentTime ?? 0
-      if (b.timestamp == null || Math.abs(b.timestamp - vt) <= 2.0) {
+      const isRecent = b.timestamp == null || Math.abs(b.timestamp - vt) <= 2.0
+
+      // Trajectory arc from ball.trajectory (array of {x, y, speed_kmh} objects from DB)
+      const traj = b.trajectory || []
+      if (traj.length > 1) {
+        for (let i = 1; i < traj.length; i++) {
+          const alpha = i / traj.length   // fade: oldest=0.15, newest=1.0
+          const opacity = 0.15 + alpha * 0.85
+          ctx.globalAlpha = opacity
+          ctx.strokeStyle = speedColor(traj[i].speed_kmh ?? b.speed_kmh)
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.moveTo(traj[i - 1].x * scaleX, traj[i - 1].y * scaleY)
+          ctx.lineTo(traj[i].x * scaleX, traj[i].y * scaleY)
+          ctx.stroke()
+        }
+        ctx.globalAlpha = 1.0
+      }
+
+      if (isRecent) {
+        const bx = b.x * scaleX
+        const by = b.y * scaleY
+        // Ball circle
         ctx.beginPath()
-        ctx.arc(b.x * scaleX, b.y * scaleY, 8, 0, Math.PI * 2)
+        ctx.arc(bx, by, 8, 0, Math.PI * 2)
         ctx.fillStyle = '#facc15cc'
         ctx.fill()
         ctx.strokeStyle = '#fbbf24'
         ctx.lineWidth = 2
         ctx.stroke()
+
+        // Speed badge above ball
+        if (b.speed_kmh != null) {
+          const label = `${b.speed_kmh} km/h`
+          ctx.font = 'bold 10px Inter'
+          const lw = ctx.measureText(label).width + 6
+          ctx.fillStyle = speedColor(b.speed_kmh)
+          ctx.fillRect(bx - lw / 2, by - 26, lw, 16)
+          ctx.fillStyle = '#fff'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(label, bx, by - 18)
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'alphabetic'
+        }
       }
     }
 

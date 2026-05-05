@@ -285,3 +285,17 @@ class ScoringEngine:
             "total_actions": 0, "total_errors": 0,
             "kills": 0, "aces": 0, "block_points": 0,
         }
+
+    @staticmethod
+    def compute_reception_quality(action_result: str, ball_speed_at_action) -> int:
+        if action_result == "error":
+            return 0
+        speed = float(ball_speed_at_action) if ball_speed_at_action is not None else 0.0
+        if action_result == "success":
+            if speed < 35.0:
+                return 3
+            elif speed < 60.0:
+                return 2
+            else:
+                return 1
+        return 1   # neutral

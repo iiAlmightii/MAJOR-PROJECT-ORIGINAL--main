@@ -53,6 +53,9 @@ class BallTracking(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=True)
     court_x: Mapped[float] = mapped_column(Float, nullable=True)
     court_y: Mapped[float] = mapped_column(Float, nullable=True)
+    speed_kmh: Mapped[float] = mapped_column(Float, nullable=True)   # instantaneous 2D speed km/h
+    vx: Mapped[float] = mapped_column(Float, nullable=True)           # court velocity x (norm/s)
+    vy: Mapped[float] = mapped_column(Float, nullable=True)           # court velocity y (norm/s)
 
     def __repr__(self):
         return f"<BallTracking Match:{self.match_id} Frame:{self.frame_number}>"

@@ -51,6 +51,12 @@ class Analytics(Base):
 
     # Extra data
     extra_data: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    distance_covered_m: Mapped[float] = mapped_column(Float, nullable=True)
+    avg_speed_kmh: Mapped[float]      = mapped_column(Float, nullable=True)
+    max_speed_kmh: Mapped[float]      = mapped_column(Float, nullable=True)
+    reception_quality_avg: Mapped[float] = mapped_column(Float, nullable=True)
+    avg_serve_speed_kmh: Mapped[float]   = mapped_column(Float, nullable=True)
+    avg_attack_speed_kmh: Mapped[float]  = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

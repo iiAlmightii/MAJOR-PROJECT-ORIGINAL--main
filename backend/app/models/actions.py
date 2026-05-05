@@ -51,6 +51,10 @@ class Action(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(20), nullable=True, default="cv")
     # source: 'cv' = computer vision | 'speech' = from commentary NLP | 'fused' = both
+    landing_x: Mapped[float] = mapped_column(Float, nullable=True)      # court x of ball landing (0-1)
+    landing_y: Mapped[float] = mapped_column(Float, nullable=True)       # court y of ball landing (0-1)
+    ball_speed_kmh: Mapped[float] = mapped_column(Float, nullable=True)  # ball speed at action moment
+    reception_quality: Mapped[int] = mapped_column(Integer, nullable=True)  # 0=error 1=poor 2=good 3=perfect
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships

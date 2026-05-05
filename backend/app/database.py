@@ -57,6 +57,24 @@ async def _apply_incremental_migrations():
         "ALTER TABLE actions ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'cv'",
         # Added: actions.spike enum value — handled by recreating enum is complex;
         # instead we accept 'spike' stored as string via SQLAlchemy native enum
+        # Phase A — ball speed
+        "ALTER TABLE ball_tracking ADD COLUMN IF NOT EXISTS speed_kmh FLOAT",
+        "ALTER TABLE ball_tracking ADD COLUMN IF NOT EXISTS vx FLOAT",
+        "ALTER TABLE ball_tracking ADD COLUMN IF NOT EXISTS vy FLOAT",
+        # Phase A — action landing zones
+        "ALTER TABLE actions ADD COLUMN IF NOT EXISTS landing_x FLOAT",
+        "ALTER TABLE actions ADD COLUMN IF NOT EXISTS landing_y FLOAT",
+        "ALTER TABLE actions ADD COLUMN IF NOT EXISTS ball_speed_kmh FLOAT",
+        # Phase C — reception quality
+        "ALTER TABLE actions ADD COLUMN IF NOT EXISTS reception_quality SMALLINT",
+        # Phase B — player movement
+        "ALTER TABLE analytics ADD COLUMN IF NOT EXISTS distance_covered_m FLOAT",
+        "ALTER TABLE analytics ADD COLUMN IF NOT EXISTS avg_speed_kmh FLOAT",
+        "ALTER TABLE analytics ADD COLUMN IF NOT EXISTS max_speed_kmh FLOAT",
+        # Phase C — speed aggregates
+        "ALTER TABLE analytics ADD COLUMN IF NOT EXISTS reception_quality_avg FLOAT",
+        "ALTER TABLE analytics ADD COLUMN IF NOT EXISTS avg_serve_speed_kmh FLOAT",
+        "ALTER TABLE analytics ADD COLUMN IF NOT EXISTS avg_attack_speed_kmh FLOAT",
     ]
     import logging
     logger = logging.getLogger(__name__)

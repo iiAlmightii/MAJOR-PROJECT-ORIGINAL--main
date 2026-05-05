@@ -41,6 +41,59 @@ PROCESS_EVERY_N = 3      # analyse every Nth frame (3 = one-third FPS)
 BATCH_SIZE      = 500    # rows per DB insert batch
 MIN_CLIP_GAP    = 2.0    # seconds of padding around rally clips
 
+LANDING_WINDOW_SERVE  = 3.0   # seconds
+LANDING_WINDOW_ATTACK = 1.5   # seconds
+LANDING_SKIP_FIRST    = 0.2   # ignore first 200ms after action (ball still being hit)
+SPEED_WINDOW          = 0.5   # ±0.5s to find ball speed at action moment
+
+
+async def _assign_landing_zones_pure(actions, ball_rows):
+    """
+    Pure assignment function — works on any objects with the right attributes.
+    Mutates action.landing_x, action.landing_y, action.ball_speed_kmh,
+    action.reception_quality in-place.
+    Called by CVPipeline._assign_landing_zones and tests.
+    """
+    from app.services.scoring_engine import ScoringEngine
+
+    for action in actions:
+        atype = getattr(action, "action_type", None)
+        if isinstance(atype, object) and hasattr(atype, "value"):
+            atype = atype.value  # unwrap SQLAlchemy enum
+        t0 = action.timestamp
+
+        if atype in ("serve", "attack"):
+            window_len = LANDING_WINDOW_SERVE if atype == "serve" else LANDING_WINDOW_ATTACK
+            candidates = [
+                b for b in ball_rows
+                if t0 + LANDING_SKIP_FIRST <= b.timestamp <= t0 + window_len
+                and b.court_x is not None
+                and b.y is not None
+            ]
+            if candidates:
+                landing = max(candidates, key=lambda b: b.y)
+                action.landing_x = landing.court_x
+                action.landing_y = landing.court_y
+
+        # Ball speed at the action moment (closest ball row within ±SPEED_WINDOW)
+        speed_candidates = [
+            b for b in ball_rows
+            if abs(b.timestamp - t0) <= SPEED_WINDOW
+            and getattr(b, "speed_kmh", None) is not None
+        ]
+        if speed_candidates:
+            closest = min(speed_candidates, key=lambda b: abs(b.timestamp - t0))
+            action.ball_speed_kmh = closest.speed_kmh
+
+        # Reception quality
+        if atype == "reception":
+            result_val = getattr(action, "result", "neutral")
+            if hasattr(result_val, "value"):
+                result_val = result_val.value
+            action.reception_quality = ScoringEngine.compute_reception_quality(
+                result_val, action.ball_speed_kmh
+            )
+
 
 class CVPipeline:
     """
@@ -270,6 +323,9 @@ class CVPipeline:
         player_id_map = await self._save_to_db(
             player_rows, ball_rows, action_rows, completed_rallies, fps, rotation_rows
         )
+
+        await self._emit(82, "Computing ball landing zones and speeds...")
+        await self._assign_landing_zones()
 
         await self._emit(90, "Computing match analytics & scoring...")
         await self._run_scoring(player_id_map, action_rows, completed_rallies)
@@ -523,6 +579,33 @@ class CVPipeline:
             logger.info(f"DB save complete for match {self.match_id}")
 
         return player_id_map
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Landing zone post-processing
+    # ──────────────────────────────────────────────────────────────────────────
+
+    async def _assign_landing_zones(self):
+        """Post-processing: assign landing zones + ball speed + reception quality to Action rows."""
+        from app.database import AsyncSessionLocal
+        from app.models.actions import Action
+        from app.models.tracking import BallTracking
+        from sqlalchemy import select
+        import uuid
+
+        async with AsyncSessionLocal() as db:
+            actions_result = await db.execute(
+                select(Action).where(Action.match_id == uuid.UUID(self.match_id))
+            )
+            actions = actions_result.scalars().all()
+
+            balls_result = await db.execute(
+                select(BallTracking).where(BallTracking.match_id == uuid.UUID(self.match_id))
+            )
+            balls = balls_result.scalars().all()
+
+            await _assign_landing_zones_pure(actions, balls)
+            await db.commit()
+            logger.info(f"Landing zones assigned for match {self.match_id}")
 
     # ──────────────────────────────────────────────────────────────────────────
     # Scoring Engine

@@ -204,12 +204,13 @@ async def get_tracking_data(
     )
     player_rows = p_result.all()
 
-    # Ball
+    # Ball — fetch wider window for trajectory trail (last 8 s) plus the ±window for current
+    TRAJ_WINDOW = 8.0
     b_result = await db.execute(
         select(BallTracking)
         .where(
             BallTracking.match_id == match_id,
-            BallTracking.timestamp >= t_min,
+            BallTracking.timestamp >= timestamp - TRAJ_WINDOW,
             BallTracking.timestamp <= t_max,
         )
         .order_by(BallTracking.timestamp)
@@ -239,12 +240,20 @@ async def get_tracking_data(
     ball_data = None
     if balls:
         closest = min(balls, key=lambda b: abs(b.timestamp - timestamp))
+        # Trajectory: last 15 positions from the wide window (already ordered by timestamp)
+        traj_rows = [b for b in balls if b.timestamp <= timestamp][-15:]
         ball_data = {
-            "x":        closest.x,
-            "y":        closest.y,
-            "court_x":  closest.court_x,
-            "court_y":  closest.court_y,
-            "timestamp":closest.timestamp,
+            "x":          closest.x,
+            "y":          closest.y,
+            "court_x":    closest.court_x,
+            "court_y":    closest.court_y,
+            "timestamp":  closest.timestamp,
+            "speed_kmh":  closest.speed_kmh,
+            "trajectory": [
+                {"x": b.x, "y": b.y, "court_x": b.court_x, "court_y": b.court_y,
+                 "speed_kmh": b.speed_kmh, "timestamp": b.timestamp}
+                for b in traj_rows
+            ],
         }
 
     return {
@@ -338,6 +347,10 @@ async def get_actions(
             "player_track_id": player.player_track_id if player else None,
             "team":         player.team if player else None,
             "rally_id":     str(action.rally_id) if action.rally_id else None,
+            "reception_quality": action.reception_quality,
+            "ball_speed_kmh":    action.ball_speed_kmh,
+            "landing_x":         action.landing_x,
+            "landing_y":         action.landing_y,
         })
 
     return {
@@ -346,6 +359,38 @@ async def get_actions(
         "limit":  limit,
         "items":  items,
     }
+
+
+@router.get("/{match_id}/ball/trajectory")
+async def get_ball_trajectory(
+    match_id: uuid.UUID,
+    t: float        = Query(0.0,  description="Current video time (seconds)"),
+    window: float   = Query(8.0,  description="Seconds of history to return"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession   = Depends(get_db),
+):
+    """Return the last `window` seconds of ball positions ending at time `t`."""
+    result = await db.execute(
+        select(BallTracking)
+        .where(
+            BallTracking.match_id == match_id,
+            BallTracking.timestamp >= t - window,
+            BallTracking.timestamp <= t,
+        )
+        .order_by(BallTracking.timestamp)
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "timestamp": r.timestamp,
+            "x":         r.x,
+            "y":         r.y,
+            "court_x":   r.court_x,
+            "court_y":   r.court_y,
+            "speed_kmh": r.speed_kmh,
+        }
+        for r in rows
+    ]
 
 
 @router.get("/{match_id}/tracking/ball-heatmap")

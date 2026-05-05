@@ -212,6 +212,9 @@ class CVPipeline:
                         "confidence": ball["confidence"],
                         "court_x": ball.get("court_x"),
                         "court_y": ball.get("court_y"),
+                        "speed_kmh":  ball.get("speed_kmh"),
+                        "vx":         ball.get("vx"),
+                        "vy":         ball.get("vy"),
                     })
 
                 for p in players:
@@ -425,6 +428,9 @@ class CVPipeline:
                         confidence=row.get("confidence"),
                         court_x=row.get("court_x"),
                         court_y=row.get("court_y"),
+                        speed_kmh=row.get("speed_kmh"),
+                        vx=row.get("vx"),
+                        vy=row.get("vy"),
                     ))
                 await db.flush()
 

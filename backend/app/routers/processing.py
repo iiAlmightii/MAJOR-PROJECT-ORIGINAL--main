@@ -578,6 +578,16 @@ async def get_player_stats(
         "attack_eff": float(analytics.attack_efficiency) if analytics else 0.0,
         "serve_eff":  float(analytics.serve_efficiency) if analytics else 0.0,
     }
+    movement = {
+        "distance_covered_m":   analytics.distance_covered_m if analytics else None,
+        "avg_speed_kmh":        analytics.avg_speed_kmh if analytics else None,
+        "max_speed_kmh":        analytics.max_speed_kmh if analytics else None,
+    }
+    speed_stats = {
+        "avg_serve_speed_kmh":    analytics.avg_serve_speed_kmh if analytics else None,
+        "avg_attack_speed_kmh":   analytics.avg_attack_speed_kmh if analytics else None,
+        "reception_quality_avg":  analytics.reception_quality_avg if analytics else None,
+    }
 
     # Recent actions (last 10)
     recent_result = await db.execute(
@@ -608,6 +618,8 @@ async def get_player_stats(
         "actions":        actions,
         "zones":          zones,
         "efficiency":     efficiency,
+        "movement":       movement,
+        "speed_stats":    speed_stats,
         "recent_actions": recent_actions,
     }
 

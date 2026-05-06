@@ -226,10 +226,37 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
       ctx.textBaseline = 'alphabetic'
     }
 
-    // Ball on mini-map (only if detection is recent)
+    // Ball trajectory trail on mini-map
     if (data.ball?.court_x != null) {
       const vt = videoRef.current?.currentTime ?? 0
-      if (data.ball.timestamp == null || Math.abs(data.ball.timestamp - vt) <= 2.0) {
+      const isRecent = data.ball.timestamp == null || Math.abs(data.ball.timestamp - vt) <= 2.0
+
+      // Trajectory: draw last 15 pixel positions as approximated court dots
+      const traj = data.ball.trajectory || []
+      const trailLen = Math.min(15, traj.length)
+      const video = videoRef.current
+      if (video && trailLen > 1) {
+        const vw = video.videoWidth || video.clientWidth || 1
+        const vh = video.videoHeight || video.clientHeight || 1
+        for (let i = traj.length - trailLen; i < traj.length; i++) {
+          const alpha = (i - (traj.length - trailLen)) / trailLen
+          const dotR = 1 + alpha * 2   // 1px oldest → 3px newest
+          // Use court coords if available, fall back to pixel projection
+          const tx = traj[i].court_x != null
+            ? mapX + traj[i].court_x * mapW
+            : mapX + (traj[i].x / vw) * mapW
+          const ty = traj[i].court_y != null
+            ? mapY + traj[i].court_y * mapH
+            : mapY + (traj[i].y / vh) * mapH
+          ctx.beginPath()
+          ctx.arc(tx, ty, dotR, 0, Math.PI * 2)
+          ctx.fillStyle = `rgba(250,204,21,${0.3 + alpha * 0.7})`
+          ctx.fill()
+        }
+      }
+
+      // Current ball position (bright dot)
+      if (isRecent) {
         const bx = mapX + data.ball.court_x * mapW
         const by = mapY + data.ball.court_y * mapH
         ctx.beginPath()

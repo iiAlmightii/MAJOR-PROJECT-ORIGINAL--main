@@ -20,6 +20,8 @@ import os
 import asyncio
 import logging
 import subprocess
+from collections import defaultdict
+from statistics import median
 from typing import Callable, Optional, List, Dict, Any
 
 import cv2
@@ -126,6 +128,27 @@ def compute_player_movement(tracking_rows):
     avg_speed = round(sum(speeds) / len(speeds), 1) if speeds else 0.0
     max_speed = round(max(speeds), 1) if speeds else 0.0
     return round(total_dist, 1), avg_speed, max_speed
+
+
+def _build_team_map(player_rows: list) -> dict:
+    """
+    Assign team side from court position.
+    Tracks with median court_x < 0.5 → 'A', ≥ 0.5 → 'B', no data → None.
+    """
+    track_xs: Dict[int, list] = defaultdict(list)
+    for r in player_rows:
+        if r.get("court_x") is not None:
+            track_xs[r["track_id"]].append(r["court_x"])
+
+    all_tids = {r["track_id"] for r in player_rows}
+    team_map: Dict[int, Optional[str]] = {}
+    for tid in all_tids:
+        xs = track_xs.get(tid, [])
+        if xs:
+            team_map[tid] = "A" if median(xs) < 0.5 else "B"
+        else:
+            team_map[tid] = None
+    return team_map
 
 
 class CVPipeline:
@@ -420,22 +443,10 @@ class CVPipeline:
             # ── Players ─────────────────────────────────────────────────────
             track_ids = {r["track_id"] for r in player_rows}
 
-            # Team assignment: court-side majority vote.
-            # Tracks with median court_x < 0.5 → Team A (left), ≥ 0.5 → Team B (right).
-            from collections import defaultdict
-            track_xs: Dict[int, list] = defaultdict(list)
-            for r in player_rows:
-                if r.get("court_x") is not None:
-                    track_xs[r["track_id"]].append(r["court_x"])
-
-            team_map: Dict[int, Optional[str]] = {}
-            for tid in track_ids:
-                xs = track_xs.get(tid, [])
-                if xs:
-                    median_x = sorted(xs)[len(xs) // 2]
-                    team_map[tid] = "A" if median_x < 0.5 else "B"
-                else:
-                    team_map[tid] = None
+            # Team assignment: court-side majority vote via module-level _build_team_map
+            team_map = _build_team_map(player_rows)
+            # Restrict to only the track_ids we are persisting
+            team_map = {tid: team_map.get(tid) for tid in track_ids}
 
             for tid in track_ids:
                 team = team_map.get(tid)

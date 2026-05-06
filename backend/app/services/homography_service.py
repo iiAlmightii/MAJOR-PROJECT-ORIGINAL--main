@@ -12,6 +12,7 @@ ordered: [top-left, top-right, bottom-right, bottom-left].
 Normalised output: x ∈ [0, 1]  (left → right), y ∈ [0, 1]  (top → bottom).
 """
 
+import os
 import cv2
 import numpy as np
 from typing import Tuple, List, Optional
@@ -19,6 +20,9 @@ from typing import Tuple, List, Optional
 # Standard volleyball court in pixels (scaled for computation)
 COURT_W_PX = 900   # 18 m
 COURT_H_PX = 450   #  9 m
+
+WEIGHTS_DIR    = os.path.join(os.path.dirname(__file__), "..", "..", "..", "models", "weights")
+COURT_WEIGHTS  = os.path.join(WEIGHTS_DIR, "court_detection_best.pt")
 
 # Default court corners in the output (top-down) image
 DST_POINTS = np.array([
@@ -59,6 +63,40 @@ class HomographyService:
         if self._H is not None:
             self._H_inv = np.linalg.inv(self._H)
         return self._H is not None
+
+    def auto_calibrate_from_model(self, frame: np.ndarray, conf: float = 0.25) -> bool:
+        """
+        Use the trained court detection model to find the court bounding box,
+        then derive the four corner points from it.
+        Returns True if a court was detected with sufficient confidence.
+        """
+        if not os.path.exists(COURT_WEIGHTS):
+            return False
+        try:
+            from ultralytics import YOLO
+            model = YOLO(COURT_WEIGHTS)
+            results = model(frame, conf=conf, verbose=False)[0]
+            if results.boxes is None or len(results.boxes) == 0:
+                return False
+            # Pick highest-confidence detection
+            confs = results.boxes.conf.cpu().numpy()
+            best = int(confs.argmax())
+            x1, y1, x2, y2 = results.boxes.xyxy[best].cpu().numpy()
+            h, w = frame.shape[:2]
+            # Clamp to frame bounds
+            x1, y1 = max(0, float(x1)), max(0, float(y1))
+            x2, y2 = min(w, float(x2)), min(h, float(y2))
+            if (x2 - x1) < w * 0.2 or (y2 - y1) < h * 0.1:
+                return False  # implausibly small bbox
+            src = [
+                [x1, y1], [x2, y1],
+                [x2, y2], [x1, y2],
+            ]
+            return self.calibrate(src)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(f"Court model calibration failed: {exc}")
+            return False
 
     def auto_calibrate_from_lines(self, frame: np.ndarray) -> bool:
         """
@@ -169,7 +207,10 @@ class HomographyService:
 
         for frame in frames:
             probe = HomographyService()
-            success = probe.auto_calibrate_from_lines(frame)
+            # Prefer model-based calibration; fall back to Hough lines
+            success = probe.auto_calibrate_from_model(frame)
+            if not success:
+                success = probe.auto_calibrate_from_lines(frame)
             if not success or probe._H is None or probe._src_points is None:
                 continue
 

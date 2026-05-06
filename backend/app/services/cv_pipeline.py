@@ -338,6 +338,7 @@ class CVPipeline:
                         "court_x": p.get("court_x"),
                         "court_y": p.get("court_y"),
                         "jersey_hue": p.get("jersey_hue", -1.0),
+                        "jersey_number": p.get("jersey_number"),
                     })
 
                 for a in actions:

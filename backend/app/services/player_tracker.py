@@ -16,6 +16,7 @@ import logging
 from typing import List, Dict, Any, Optional
 import numpy as np
 import cv2
+from app.services.jersey_ocr import read_jersey_number
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ CONF_THRESHOLD    = 0.50
 IOU_THRESHOLD     = 0.45
 REFEREE_IOU_THRESH = 0.30               # overlap with referee box → suppress player
 MAX_TRACKS        = 16     # 12 players + up to 4 sideline staff hard ceiling
+OCR_INTERVAL      = 15    # run jersey OCR every N frames to limit GPU cost
 
 # Court boundary margins in normalised court coords (used when homography IS calibrated).
 # Tighter than before so sideline coaches/refs are excluded.
@@ -216,18 +218,29 @@ class PlayerTracker:
                 # ── Jersey hue (for team clustering downstream) ──────────────────
                 jersey_hue = self._sample_jersey_hue(frame, bx, by, bw, bh)
 
+                # Jersey OCR — only every OCR_INTERVAL frames
+                jersey_number = None
+                if frame_idx % OCR_INTERVAL == 0:
+                    x1i = max(0, int(bx))
+                    y1i = max(0, int(by))
+                    x2i = min(frame.shape[1], int(bx + bw))
+                    y2i = min(frame.shape[0], int(by + bh))
+                    crop = frame[y1i:y2i, x1i:x2i]
+                    jersey_number = read_jersey_number(crop)
+
                 output.append({
-                    "track_id":    tid,
-                    "bbox_x":      bx,
-                    "bbox_y":      by,
-                    "bbox_w":      bw,
-                    "bbox_h":      bh,
-                    "confidence":  conf,
-                    "court_x":     cx if cx >= 0 else None,
-                    "court_y":     cy if cy >= 0 else None,
-                    "frame_number":frame_idx,
-                    "timestamp":   round(timestamp, 4),
-                    "jersey_hue":  jersey_hue,
+                    "track_id":      tid,
+                    "bbox_x":        bx,
+                    "bbox_y":        by,
+                    "bbox_w":        bw,
+                    "bbox_h":        bh,
+                    "confidence":    conf,
+                    "court_x":       cx if cx >= 0 else None,
+                    "court_y":       cy if cy >= 0 else None,
+                    "frame_number":  frame_idx,
+                    "timestamp":     round(timestamp, 4),
+                    "jersey_hue":    jersey_hue,
+                    "jersey_number": jersey_number,
                 })
 
             # Hard cap: keep only the MAX_TRACKS detections with highest confidence

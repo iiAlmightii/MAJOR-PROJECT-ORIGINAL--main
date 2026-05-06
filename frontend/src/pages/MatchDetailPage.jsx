@@ -184,6 +184,21 @@ function ActionTab({ match, actionsData, actionFilters, setActionFilters }) {
                     {action.result === 'success' && (
                       <span className="text-[10px] bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded">✓</span>
                     )}
+                    {/* Reception quality badge */}
+                    {action.action_type === 'reception' && action.reception_quality != null && (
+                      <span className={`ml-2 px-1.5 py-0.5 rounded text-xs font-bold ${
+                        action.reception_quality === 3 ? 'bg-green-500/20 text-green-400' :
+                        action.reception_quality === 2 ? 'bg-yellow-500/20 text-yellow-400' :
+                        action.reception_quality === 1 ? 'bg-orange-500/20 text-orange-400' :
+                                                         'bg-red-500/20 text-red-400'
+                      }`}>
+                        Rtg. {action.reception_quality}
+                      </span>
+                    )}
+                    {/* Ball speed annotation for serve/attack */}
+                    {(['serve', 'attack'].includes(action.action_type)) && action.ball_speed_kmh != null && (
+                      <span className="ml-2 text-xs text-slate-400">{action.ball_speed_kmh} km/h</span>
+                    )}
                     {action.team && (
                       <span className={clsx(
                         'text-[10px] px-1.5 py-0.5 rounded',
@@ -750,6 +765,36 @@ export default function MatchDetailPage() {
                     <StatPill label="Atk Eff." value={p.attack_efficiency?.toFixed(2)} color="yellow" />
                     <StatPill label="Srv Eff." value={p.serve_efficiency?.toFixed(2)}  color="purple" />
                   </div>
+                  {/* Movement stats */}
+                  {p.movement && (
+                    <div className="mt-3 pt-3 border-t border-court-border">
+                      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Movement</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: 'Distance', value: p.movement.distance_covered_m != null ? `${p.movement.distance_covered_m} m` : '—' },
+                          { label: 'Avg Speed', value: p.movement.avg_speed_kmh != null ? `${p.movement.avg_speed_kmh} km/h` : '—' },
+                          { label: 'Peak Speed', value: p.movement.max_speed_kmh != null ? `${p.movement.max_speed_kmh} km/h` : '—' },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="text-center">
+                            <div className="text-xs text-slate-400">{label}</div>
+                            <div className="text-sm font-semibold text-white">{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {p.speed_stats?.avg_serve_speed_kmh && (
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div className="text-center">
+                            <div className="text-xs text-slate-400">Avg Serve</div>
+                            <div className="text-sm font-semibold text-white">{p.speed_stats.avg_serve_speed_kmh} km/h</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-xs text-slate-400">Avg Attack</div>
+                            <div className="text-sm font-semibold text-white">{p.speed_stats.avg_attack_speed_kmh ?? '—'} km/h</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

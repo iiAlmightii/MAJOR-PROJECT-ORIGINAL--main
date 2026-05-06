@@ -449,13 +449,58 @@ class CVPipeline:
             # Restrict to only the track_ids we are persisting
             team_map = {tid: team_map.get(tid) for tid in track_ids}
 
+            from app.services.jersey_ocr import consensus_jersey
+
+            # Jersey number consensus: mode of non-None OCR readings per track
+            track_jerseys: Dict[int, list] = defaultdict(list)
+            for r in player_rows:
+                jn = r.get("jersey_number")
+                if jn is not None:
+                    track_jerseys[r["track_id"]].append(jn)
+
+            jersey_map: Dict[int, Optional[int]] = {
+                tid: consensus_jersey(readings)
+                for tid, readings in track_jerseys.items()
+            }
+
+            # Pre-merge: group tracks with same team + same jersey number
+            # (ByteTrack assigned them different IDs due to tracking gaps)
+            jersey_merge: Dict[int, int] = {}  # ghost_tid → canonical_tid
+            seen_jersey: Dict[tuple, int] = {}  # (team, jersey_num) → first tid
+            for tid in sorted(track_ids):       # sorted for determinism
+                team  = team_map.get(tid)
+                jnum  = jersey_map.get(tid)
+                key   = (team, jnum)
+                if jnum is not None and team is not None and key in seen_jersey:
+                    jersey_merge[tid] = seen_jersey[key]  # this tid is a duplicate
+                elif jnum is not None and team is not None:
+                    seen_jersey[key] = tid
+
+            # Remap ghost track_ids in player_rows and action_rows
+            for r in player_rows:
+                if r["track_id"] in jersey_merge:
+                    r["track_id"] = jersey_merge[r["track_id"]]
+            for r in action_rows:
+                if r.get("track_id") in jersey_merge:
+                    r["track_id"] = jersey_merge[r["track_id"]]
+
+            # Recompute track_ids after merge
+            track_ids = {r["track_id"] for r in player_rows}
+
             for tid in track_ids:
-                team = team_map.get(tid)
+                team   = team_map.get(tid)
+                jnum   = jersey_map.get(tid)
                 player = Player(
                     match_id=uuid.UUID(self.match_id),
                     player_track_id=tid,
                     team=team,
-                    display_name=f"Player #{tid} (Team {team or '?'})",
+                    jersey_number=str(jnum) if jnum is not None else None,
+                    display_number=jnum,
+                    display_name=(
+                        f"#{jnum} (Team {team or '?'})"
+                        if jnum is not None
+                        else f"Player #{tid} (Team {team or '?'})"
+                    ),
                 )
                 db.add(player)
                 await db.flush()

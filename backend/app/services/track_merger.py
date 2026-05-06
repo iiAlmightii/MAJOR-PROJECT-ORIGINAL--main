@@ -60,30 +60,41 @@ def _find_merge_pairs(tracks: List[Dict]) -> List[Tuple[str, str]]:
 
 def _assign_display_numbers(players: List[Dict]) -> List[Dict]:
     """
-    Assign display_number to each player dict in place.
-    Team A: #1–6 sorted by t_start.
-    Team B: #7–12 sorted by t_start.
-    Others (refs, coaches, unknown): #13+ sorted by t_start.
-    Returns the same list with 'display_number' key added.
+    Assign display_number to each player dict.
+    If the player has a jersey_number from OCR, use that directly.
+    Otherwise fall back to sequential: Team A → #1+, Team B → #7+, rest → #13+.
+    Returns the same list with 'display_number' key set.
     """
-    team_a = sorted([p for p in players if p.get("team") == "A"], key=lambda p: p["t_start"])
-    team_b = sorted([p for p in players if p.get("team") == "B"], key=lambda p: p["t_start"])
-    others = sorted([p for p in players if p.get("team") not in ("A", "B")], key=lambda p: p["t_start"])
+    used_numbers = set()
 
-    counter = 1
+    # First pass: assign jersey numbers directly
+    for p in players:
+        jn = p.get("jersey_number")
+        if jn is not None:
+            p["display_number"] = int(jn)
+            used_numbers.add(int(jn))
+
+    # Second pass: sequential fallback for players without jersey OCR
+    team_a = sorted([p for p in players if p.get("team") == "A" and p.get("display_number") is None],
+                    key=lambda p: p["t_start"])
+    team_b = sorted([p for p in players if p.get("team") == "B" and p.get("display_number") is None],
+                    key=lambda p: p["t_start"])
+    others = sorted([p for p in players if p.get("team") not in ("A", "B") and p.get("display_number") is None],
+                    key=lambda p: p["t_start"])
+
+    def _next_available(start: int) -> int:
+        n = start
+        while n in used_numbers:
+            n += 1
+        used_numbers.add(n)
+        return n
+
     for p in team_a:
-        p["display_number"] = counter
-        counter += 1
-
-    counter = 7
+        p["display_number"] = _next_available(1)
     for p in team_b:
-        p["display_number"] = counter
-        counter += 1
-
-    counter = 13
+        p["display_number"] = _next_available(7)
     for p in others:
-        p["display_number"] = counter
-        counter += 1
+        p["display_number"] = _next_available(13)
 
     return players
 
@@ -277,10 +288,11 @@ async def merge_tracks(match_id: str) -> Dict:
                 .where(PlayerTracking.player_id == p.id)
             )
             summary.append({
-                "player_id":    str(p.id),
-                "team":         p.team,
-                "t_start":      t_start_val,
-                "frame_count":  frame_cnt_r.scalar() or 0,
+                "player_id":     str(p.id),
+                "team":          p.team,
+                "t_start":       t_start_val,
+                "frame_count":   frame_cnt_r.scalar() or 0,
+                "jersey_number": p.display_number,
             })
 
         numbered = _assign_display_numbers(summary)

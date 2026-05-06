@@ -34,5 +34,9 @@ onnxruntime>=1.18.0     # ONNX inference backend for rtmlib
 
 # ─── Speech-to-Knowledge Module ───────────────────────────────────────────────
 openai-whisper>=20231117   # Whisper ASR — local inference, no API key needed
+imageio-ffmpeg>=0.6.0      # Bundled FFmpeg binary for browser-compatible video conversion
 # Note: also installs ffmpeg-python. System ffmpeg must be available.
 # Install system ffmpeg:  sudo apt install ffmpeg  (Ubuntu)  or  brew install ffmpeg (Mac)
+
+# ─── Jersey OCR ───────────────────────────────────────────────────────────────
+easyocr>=1.7.0

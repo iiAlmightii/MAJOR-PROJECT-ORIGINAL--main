@@ -46,35 +46,78 @@ For even better accuracy later (when you have match video clips):
 
 import argparse
 import shutil
+import yaml
 from pathlib import Path
 
 ROOT        = Path(__file__).resolve().parent.parent.parent
 DATASET_DIR = ROOT / "Dataset" / "Action recognition"
-DATA_YAML   = DATASET_DIR / "data.yaml"
 WEIGHTS_OUT = ROOT / "models" / "weights"
 WEIGHTS_OUT.mkdir(parents=True, exist_ok=True)
+
+
+def fix_val_path(data_yaml: Path) -> Path:
+    """
+    Many Roboflow exports set val: ../valid/images but never include a valid/ split.
+    This function patches the yaml in-place to use test/ if it exists, else train/.
+    Returns the (possibly modified) yaml path.
+    """
+    dataset_dir = data_yaml.parent
+    with open(data_yaml) as f:
+        cfg = yaml.safe_load(f)
+
+    val_path = cfg.get("val", "")
+    # Resolve relative to dataset directory
+    val_abs = (dataset_dir / val_path.lstrip("../")).resolve() if val_path else None
+
+    if val_abs and val_abs.exists():
+        return data_yaml   # already valid, no fix needed
+
+    # Find a working split: prefer test/, fallback to train/
+    for candidate in ["../test/images", "../train/images"]:
+        candidate_abs = (dataset_dir / candidate.lstrip("../")).resolve()
+        if candidate_abs.exists():
+            cfg["val"] = candidate
+            with open(data_yaml, "w") as f:
+                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+            print(f"  [fix] val path updated: {val_path} → {candidate}")
+            return data_yaml
+
+    print(f"  WARNING: Could not find a valid val split for {data_yaml}")
+    return data_yaml
 
 
 def train(args):
     from ultralytics import YOLO
 
-    if not DATA_YAML.exists():
-        print(f"ERROR: Dataset not found at {DATA_YAML}")
+    data_yaml = Path(args.data) if args.data else DATASET_DIR / "data.yaml"
+    if not data_yaml.exists():
+        print(f"ERROR: Dataset yaml not found at {data_yaml}")
+        print("Use --data to point to a different dataset, e.g.:")
+        print("  --data 'Dataset/Action Recognition 2/data.yaml'")
         return
 
+    # Auto-fix broken val path (common Roboflow export issue)
+    data_yaml = fix_val_path(data_yaml)
+
+    # Read class names for display
+    with open(data_yaml) as f:
+        cfg = yaml.safe_load(f)
+    class_names = cfg.get("names", [])
+    nc = cfg.get("nc", len(class_names))
+
     print("=" * 65)
-    print("  Action Detection Training v2  — YOLOv8n")
-    print(f"  Dataset : {DATA_YAML}")
-    print(f"  Classes : block, defense, serve, set, spike  (5)")
+    print("  Action Detection Training v2  — YOLOv8")
+    print(f"  Dataset : {data_yaml}")
+    print(f"  Classes : {class_names}  ({nc} classes)")
     print(f"  Model   : {args.model}")
     print(f"  Epochs  : {args.epochs}  |  ImgSz: {args.imgsz}  |  Batch: {args.batch}")
     print(f"  FP16    : {not args.no_half} (saves VRAM)")
     print("=" * 65)
 
-    model = YOLO(f"{args.model}.pt")
+    model = YOLO(f"{args.model}.pt")   # always starts from COCO-pretrained backbone
 
     results = model.train(
-        data    = str(DATA_YAML),
+        data    = str(data_yaml),
         epochs  = args.epochs,
         imgsz   = args.imgsz,
         batch   = args.batch,
@@ -130,16 +173,20 @@ def train(args):
 
 def evaluate(args):
     from ultralytics import YOLO
+    import yaml
 
     weights = args.weights or str(WEIGHTS_OUT / "action_detection.pt")
     if not Path(weights).exists():
         print(f"ERROR: weights not found at {weights}")
         return
 
+    data_yaml = Path(args.data) if args.data else DATASET_DIR / "data.yaml"
+    data_yaml = fix_val_path(data_yaml)
+
     print(f"\n  Evaluating: {weights}")
     model   = YOLO(weights)
     metrics = model.val(
-        data   = str(DATA_YAML),
+        data   = str(data_yaml),
         imgsz  = args.imgsz,
         conf   = 0.4,
         device = args.device,
@@ -161,6 +208,10 @@ def main():
     parser = argparse.ArgumentParser(
         description="Train YOLO action detector on Volleyball Actions dataset (5 classes)"
     )
+    parser.add_argument("--data",     default=None,
+                        help="Path to data.yaml (default: Dataset/Action recognition/data.yaml). "
+                             "Examples: 'Dataset/Action Recognition 2/data.yaml', "
+                             "'Dataset/Action recognition 3/data.yaml'")
     parser.add_argument("--model",    default="yolov8n",
                         choices=["yolov8n", "yolov8s", "yolov8m"],
                         help="yolov8n = fastest (4GB VRAM), yolov8s = better accuracy")

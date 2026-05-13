@@ -54,13 +54,6 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
     canvas.height = video.videoHeight || video.clientHeight
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    const speedColor = (kmh) => {
-      if (kmh == null)    return 'rgba(200,200,200,0.8)'
-      if (kmh < 40)       return 'rgba(80,200,80,0.9)'
-      if (kmh < 70)       return 'rgba(255,200,0,0.9)'
-      return 'rgba(255,60,60,0.9)'
-    }
-
     const scaleX = canvas.width  / video.videoWidth
     const scaleY = canvas.height / video.videoHeight
 
@@ -91,57 +84,8 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
       })
     }
 
-    // Draw ball trajectory arc + speed badge
-    if (trackingData.ball) {
-      const b = trackingData.ball
-      const vt = videoRef.current?.currentTime ?? 0
-      const isRecent = b.timestamp == null || Math.abs(b.timestamp - vt) <= 2.0
-
-      // Trajectory arc from ball.trajectory (array of {x, y, speed_kmh} objects from DB)
-      const traj = b.trajectory || []
-      if (traj.length > 1) {
-        for (let i = 1; i < traj.length; i++) {
-          const alpha = i / traj.length   // fade: oldest=0.15, newest=1.0
-          const opacity = 0.15 + alpha * 0.85
-          ctx.globalAlpha = opacity
-          ctx.strokeStyle = speedColor(traj[i].speed_kmh ?? b.speed_kmh)
-          ctx.lineWidth = 2
-          ctx.beginPath()
-          ctx.moveTo(traj[i - 1].x * scaleX, traj[i - 1].y * scaleY)
-          ctx.lineTo(traj[i].x * scaleX, traj[i].y * scaleY)
-          ctx.stroke()
-        }
-        ctx.globalAlpha = 1.0
-      }
-
-      if (isRecent) {
-        const bx = b.x * scaleX
-        const by = b.y * scaleY
-        // Ball circle
-        ctx.beginPath()
-        ctx.arc(bx, by, 8, 0, Math.PI * 2)
-        ctx.fillStyle = '#facc15cc'
-        ctx.fill()
-        ctx.strokeStyle = '#fbbf24'
-        ctx.lineWidth = 2
-        ctx.stroke()
-
-        // Speed badge above ball
-        if (b.speed_kmh != null) {
-          const label = `${b.speed_kmh} km/h`
-          ctx.font = 'bold 10px Inter'
-          const lw = ctx.measureText(label).width + 6
-          ctx.fillStyle = speedColor(b.speed_kmh)
-          ctx.fillRect(bx - lw / 2, by - 26, lw, 16)
-          ctx.fillStyle = '#fff'
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillText(label, bx, by - 18)
-          ctx.textAlign = 'left'
-          ctx.textBaseline = 'alphabetic'
-        }
-      }
-    }
+    // Ball is not drawn on the main canvas — too inaccurate at pixel level.
+    // Ball position is shown only on the court mini-map below.
 
     // Draw homography mini-map (bottom-right)
     drawMiniMap(ctx, canvas.width, canvas.height, trackingData)
@@ -226,31 +170,23 @@ export default function VideoPlayer({ videoId, matchId, trackingData = null, onT
       ctx.textBaseline = 'alphabetic'
     }
 
-    // Ball trajectory trail on mini-map
-    if (data.ball?.court_x != null) {
+    // Ball trajectory trail on mini-map — only on-court positions (court_x/y in [0,1])
+    const onCourt = (cx, cy) => cx != null && cy != null && cx >= 0 && cx <= 1 && cy >= 0 && cy <= 1
+    if (onCourt(data.ball?.court_x, data.ball?.court_y)) {
       const vt = videoRef.current?.currentTime ?? 0
       const isRecent = data.ball.timestamp == null || Math.abs(data.ball.timestamp - vt) <= 2.0
 
-      // Trajectory: draw last 15 pixel positions as approximated court dots
-      const traj = data.ball.trajectory || []
-      const trailLen = Math.min(15, traj.length)
-      const video = videoRef.current
-      if (video && trailLen > 1) {
-        const vw = video.videoWidth || video.clientWidth || 1
-        const vh = video.videoHeight || video.clientHeight || 1
-        for (let i = traj.length - trailLen; i < traj.length; i++) {
-          const alpha = (i - (traj.length - trailLen)) / trailLen
-          const dotR = 1 + alpha * 2   // 1px oldest → 3px newest
-          // Use court coords if available, fall back to pixel projection
-          const tx = traj[i].court_x != null
-            ? mapX + traj[i].court_x * mapW
-            : mapX + (traj[i].x / vw) * mapW
-          const ty = traj[i].court_y != null
-            ? mapY + traj[i].court_y * mapH
-            : mapY + (traj[i].y / vh) * mapH
+      // Draw trajectory — only points that landed on court
+      const traj = (data.ball.trajectory || []).filter(p => onCourt(p.court_x, p.court_y))
+      if (traj.length > 1) {
+        for (let i = 1; i < traj.length; i++) {
+          const alpha = i / traj.length
+          const dotR = 1 + alpha * 2.5
+          const tx = mapX + traj[i].court_x * mapW
+          const ty = mapY + traj[i].court_y * mapH
           ctx.beginPath()
           ctx.arc(tx, ty, dotR, 0, Math.PI * 2)
-          ctx.fillStyle = `rgba(250,204,21,${0.3 + alpha * 0.7})`
+          ctx.fillStyle = `rgba(250,204,21,${0.25 + alpha * 0.75})`
           ctx.fill()
         }
       }

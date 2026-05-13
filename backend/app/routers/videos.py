@@ -17,7 +17,11 @@ from app.schemas.video import VideoResponse, VideoUploadResponse
 from app.utils.dependencies import get_current_user, require_coach, log_activity
 from app.utils.jwt_handler import verify_access_token
 from app.config import settings
-from app.services.video_service import extract_video_metadata, generate_thumbnail
+from app.services.video_service import (
+    ensure_browser_playable_video,
+    extract_video_metadata,
+    generate_thumbnail,
+)
 
 router = APIRouter(prefix="/videos", tags=["Videos"])
 
@@ -100,14 +104,18 @@ async def process_video_metadata(video_id: str, file_path: str):
         if not video:
             return
         try:
-            metadata = await extract_video_metadata(file_path)
+            playable_path = await ensure_browser_playable_video(file_path)
+            metadata = await extract_video_metadata(playable_path)
+            video.file_path = playable_path
+            video.file_size = os.path.getsize(playable_path)
+            video.format = "mp4"
             video.duration = metadata.get("duration")
             video.width = metadata.get("width")
             video.height = metadata.get("height")
             video.fps = metadata.get("fps")
 
             # Generate thumbnail
-            thumb_path = await generate_thumbnail(file_path, video_id)
+            thumb_path = await generate_thumbnail(playable_path, video_id)
             video.thumbnail_path = thumb_path
             video.status = VideoStatus.uploaded
         except Exception as e:
@@ -174,46 +182,55 @@ async def stream_video(
         if video.uploaded_by != current_user.id:
             raise HTTPException(status_code=403, detail="Access denied")
 
-    if not os.path.exists(video.file_path):
+    # Prefer the browser-playable converted file if it exists
+    serve_path = video.file_path
+    browser_path = video.file_path.rsplit(".", 1)[0] + ".browser.mp4"
+    if not serve_path.endswith(".browser.mp4") and os.path.exists(browser_path):
+        serve_path = browser_path
+
+    if not os.path.exists(serve_path):
         raise HTTPException(status_code=404, detail="Video file not found on server")
 
-    file_size = os.path.getsize(video.file_path)
+    file_size = os.path.getsize(serve_path)
+    content_type = "video/mp4"
     range_header = request.headers.get("Range")
 
+    # Parse byte range (default: full file)
+    start = 0
+    end = file_size - 1
+    status_code = 200
+
     if range_header:
-        # Parse range header for partial content
-        range_match = range_header.replace("bytes=", "").split("-")
-        start = int(range_match[0])
-        end = int(range_match[1]) if range_match[1] else file_size - 1
-        chunk_size = end - start + 1
+        try:
+            range_match = range_header.replace("bytes=", "").split("-")
+            start = int(range_match[0])
+            end = int(range_match[1]) if range_match[1] else file_size - 1
+            status_code = 206
+        except (ValueError, IndexError):
+            pass
 
-        async def iter_file():
-            async with aiofiles.open(video.file_path, "rb") as f:
-                await f.seek(start)
-                remaining = chunk_size
-                while remaining > 0:
-                    data = await f.read(min(65536, remaining))
-                    if not data:
-                        break
-                    remaining -= len(data)
-                    yield data
+    end = min(end, file_size - 1)
+    chunk_size = end - start + 1
 
-        return StreamingResponse(
-            iter_file(),
-            status_code=206,
-            headers={
-                "Content-Range": f"bytes {start}-{end}/{file_size}",
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(chunk_size),
-                "Content-Type": f"video/{video.format or 'mp4'}",
-            },
-        )
+    async def iter_file():
+        async with aiofiles.open(serve_path, "rb") as f:
+            await f.seek(start)
+            remaining = chunk_size
+            while remaining > 0:
+                data = await f.read(min(65536, remaining))
+                if not data:
+                    break
+                remaining -= len(data)
+                yield data
 
-    return FileResponse(
-        video.file_path,
-        media_type=f"video/{video.format or 'mp4'}",
-        filename=video.original_filename,
-    )
+    headers = {
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(chunk_size),
+        "Content-Type": content_type,
+        "Cache-Control": "no-cache",
+    }
+    return StreamingResponse(iter_file(), status_code=status_code, headers=headers)
 
 
 @router.get("/{video_id}/thumbnail")

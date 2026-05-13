@@ -1,0 +1,51 @@
+<h2>Tracking Fix — 3 Approaches</h2>
+<p class="subtitle">Root cause: ByteTrack loses players after ~1.5s occlusion → new UUID assigned → 60 phantom "players". Pick your preferred fix strategy.</p>
+
+<div class="options">
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Parameter Tuning Only</h3>
+      <p>Increase <code>lost_track_buffer</code> 30 → 120 frames (6 sec buffer), lower IoU threshold 0.8 → 0.65, hard-cap tracks at 16. Simple config change, no new code.</p>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>Minimal risk</li><li>Fast to ship</li><li>No pipeline changes</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Still fails on long occlusions (timeouts, rotations off-camera)</li><li>Doesn't fix existing data — re-analysis still produces some duplicates</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Tuning + Post-processing Track Merger <span style="color:#4ade80;font-size:0.75rem;margin-left:6px">★ Recommended</span></h3>
+      <p>Tune parameters (like A), then after the full pipeline run, add a <strong>track merge pass</strong>: pair up tracks that are on the same team, never overlap in time, and whose last/first positions are spatially close → merge into one Player UUID. Then prune: keep only top-16 players by total frames seen.</p>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>Handles long occlusions + camera pans</li><li>Hard cap guarantees ≤16 players in output</li><li>Stats consolidate onto merged player</li><li>Re-analysis produces clean data</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>~1–2 days extra work vs A</li><li>Merge heuristic has edge cases (e.g. two players in same position)</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>ByteTrack + Appearance ReID</h3>
+      <p>Add a lightweight ReID model (e.g. OSNet or YOLO pose features) that extracts a jersey-color + body-shape embedding per player. Returning players matched by embedding similarity, not just IoU — survives arbitrary disappearances.</p>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>Most robust — handles any occlusion length</li><li>Industry-standard approach (used in BoT-SORT, StrongSORT)</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>New model to integrate (~1 week)</li><li>Slower pipeline (extra inference per frame)</li><li>Volleyball jerseys often similar → embedding confusion possible</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:24px;padding:16px;background:rgba(255,255,255,0.04);border-radius:8px;border:1px solid rgba(255,255,255,0.1)">
+  <p class="label">Regardless of approach chosen, also includes:</p>
+  <ul style="margin-top:8px;line-height:1.8">
+    <li>🔁 <strong>Re-analyze button</strong> in match detail UI — clears old tracking data, re-runs pipeline, shows WebSocket progress</li>
+    <li>🎯 <strong>Team assignment fix</strong> — cluster players by court side (left=Team A, right=Team B) instead of guessing</li>
+    <li>🔢 <strong>Stable display IDs</strong> — show sequential #1–#12 per team instead of raw UUIDs</li>
+  </ul>
+</div>

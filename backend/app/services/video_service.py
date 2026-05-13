@@ -3,6 +3,55 @@ import asyncio
 from typing import Optional, Dict, Any
 
 
+async def ensure_browser_playable_video(file_path: str) -> str:
+    """Convert uploads to a browser-friendly MP4 when FFmpeg is available.
+
+    Forces H.264 Baseline profile + full color range so every browser can
+    software-decode the video without a black screen.
+    """
+    root, _ = os.path.splitext(file_path)
+    output_path = f"{root}.browser.mp4"
+
+    if file_path.endswith(".browser.mp4"):
+        return file_path
+
+    try:
+        import imageio_ffmpeg
+
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        loop = asyncio.get_event_loop()
+
+        def _convert():
+            # Re-encode if output is missing or suspiciously small (<100 KB),
+            # which catches old conversions that lacked baseline/color-range flags.
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 102400:
+                return output_path
+
+            import subprocess
+            cmd = [
+                ffmpeg, "-y",
+                "-i", file_path,
+                "-c:v", "libx264",
+                "-profile:v", "baseline",   # widest hardware/software compat
+                "-level", "3.1",
+                "-preset", "veryfast",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-color_range", "pc",       # full range — prevents black/dark frames
+                "-movflags", "+faststart",  # moov atom at front for instant play
+                "-c:a", "aac",
+                "-b:a", "128k",
+                output_path,
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
+            return output_path
+
+        converted = await loop.run_in_executor(None, _convert)
+        return converted if os.path.exists(converted) else file_path
+    except Exception:
+        return file_path
+
+
 async def extract_video_metadata(file_path: str) -> Dict[str, Any]:
     """Extract video metadata using OpenCV."""
     try:

@@ -34,7 +34,7 @@ CUSTOM_WEIGHTS  = os.path.join(WEIGHTS_DIR, "ball_detection.pt")
 FALLBACK_WEIGHTS = "yolov8n.pt"
 
 BALL_COCO_CLASS  = 32       # COCO sports ball
-CONF_THRESHOLD   = 0.35
+CONF_THRESHOLD   = 0.50     # raised — below this catches logos/rings
 SMOOTH_ALPHA     = 0.6      # EMA weight
 TRAJECTORY_LEN   = 30       # frames to keep in trail
 
@@ -106,9 +106,8 @@ class BallDetector:
         if self._loaded:
             result = self._detect_yolo(frame)
 
-        # Fall back to Hough circles if YOLO fails
-        if result is None:
-            result = self._detect_hough(frame)
+        # Hough circle fallback is disabled — it detects logos/rings as balls.
+        # YOLO-only is more accurate even when it misses some frames.
 
         if result is None:
             return None

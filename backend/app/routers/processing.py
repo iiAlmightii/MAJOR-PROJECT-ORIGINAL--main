@@ -237,11 +237,17 @@ async def get_tracking_data(
                 "timestamp":       pt.timestamp,
             }
 
+    def _on_court(b) -> bool:
+        """Ball must have valid court coords inside [0,1] to be considered real."""
+        return (b.court_x is not None and b.court_y is not None
+                and 0.0 <= b.court_x <= 1.0 and 0.0 <= b.court_y <= 1.0)
+
     ball_data = None
-    if balls:
-        closest = min(balls, key=lambda b: abs(b.timestamp - timestamp))
-        # Trajectory: last 15 positions from the wide window (already ordered by timestamp)
-        traj_rows = [b for b in balls if b.timestamp <= timestamp][-15:]
+    # Only use on-court ball detections — off-court means logo/audience false-positive
+    valid_balls = [b for b in balls if _on_court(b)]
+    if valid_balls:
+        closest = min(valid_balls, key=lambda b: abs(b.timestamp - timestamp))
+        traj_rows = [b for b in valid_balls if b.timestamp <= timestamp][-15:]
         ball_data = {
             "x":          closest.x,
             "y":          closest.y,

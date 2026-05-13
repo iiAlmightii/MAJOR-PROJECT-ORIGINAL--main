@@ -1,6 +1,5 @@
 train: ../train/images
-val: ../valid/images
-test: ../test/images
+val: ../train/images
 
 nc: 13
 names: ['a_surve', 'attacker', 'b_surve', 'block', 'blocker', 'blocking', 'digging', 'over', 'passing', 'serving', 'setting', 'spike', 'spiking']

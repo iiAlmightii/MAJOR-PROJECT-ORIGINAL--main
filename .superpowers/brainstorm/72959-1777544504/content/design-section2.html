@@ -1,0 +1,150 @@
+<h2>Design — Section 2 of 3: Player Profile Modal</h2>
+<p class="subtitle">Click a bounding box on the video → modal appears with full player stats</p>
+
+<div class="section">
+  <h3>2A — Click Detection on Canvas</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Problem today</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">Canvas has <code>pointer-events:none</code> — clicks pass through to the video element (play/pause). No click handler exists.</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Fix</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">Canvas gets <code>pointer-events:auto</code> + <code>onClick</code> handler. On click: compute canvas-relative coords → check if point is inside any player bounding box → if yes, open modal for that player. If no box hit → pass click to video (toggle play).</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>2B — New API Endpoint</h3>
+  <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08);font-size:0.88rem;line-height:1.8">
+    <code>GET /api/matches/{match_id}/players/{player_id}/stats</code><br><br>
+    Returns:<br>
+    &nbsp;• <strong>presence</strong>: frames_detected, total_frames, involvement_pct<br>
+    &nbsp;• <strong>actions</strong>: per action_type → { total, success, error, neutral }<br>
+    &nbsp;• <strong>zones</strong>: count per zone 1–6 (from actions.zone)<br>
+    &nbsp;• <strong>efficiency</strong>: attack_eff, serve_eff<br>
+    &nbsp;• <strong>timeline</strong>: list of { timestamp, action_type, result } — last 10 actions
+  </div>
+</div>
+
+<div class="section">
+  <h3>2C — Modal Layout</h3>
+  <div class="mockup">
+    <div class="mockup-header">Player Profile Modal — Wireframe</div>
+    <div class="mockup-body" style="padding:0">
+
+      <!-- Modal backdrop simulation -->
+      <div style="background:#0d1117;border-radius:12px;overflow:hidden;max-width:560px;margin:0 auto;box-shadow:0 25px 60px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.1)">
+
+        <!-- Header band -->
+        <div style="background:linear-gradient(135deg,#1e3a5f,#0f2744);padding:20px 24px;display:flex;align-items:center;gap:16px;position:relative">
+          <div style="width:56px;height:56px;border-radius:50%;background:#3b82f6;display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:700;color:white">#3</div>
+          <div>
+            <div style="font-size:1.25rem;font-weight:700;color:white">Player #3</div>
+            <div style="margin-top:4px;display:flex;gap:8px;align-items:center">
+              <span style="background:#3b82f6;color:white;padding:2px 10px;border-radius:20px;font-size:0.75rem;font-weight:600">Team A</span>
+              <span style="color:rgba(255,255,255,0.5);font-size:0.8rem">Active · 8m 34s on court</span>
+            </div>
+          </div>
+          <div style="position:absolute;right:16px;top:16px;color:rgba(255,255,255,0.4);cursor:pointer;font-size:1.2rem">✕</div>
+        </div>
+
+        <!-- Involvement bar -->
+        <div style="padding:16px 24px 0;border-bottom:1px solid rgba(255,255,255,0.07)">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:0.78rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.05em">Match Involvement</span>
+            <span style="font-size:0.88rem;font-weight:600;color:#4ade80">74%</span>
+          </div>
+          <div style="height:6px;background:rgba(255,255,255,0.08);border-radius:3px;margin-bottom:16px">
+            <div style="width:74%;height:100%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:3px"></div>
+          </div>
+        </div>
+
+        <!-- Stats grid -->
+        <div style="padding:16px 24px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;border-bottom:1px solid rgba(255,255,255,0.07)">
+          <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:1.4rem;font-weight:700;color:#60a5fa">12</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-top:2px">Attacks</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:1.4rem;font-weight:700;color:#a78bfa">5</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-top:2px">Blocks</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:1.4rem;font-weight:700;color:#34d399">8</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-top:2px">Digs</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:1.4rem;font-weight:700;color:#fbbf24">3</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-top:2px">Serves</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:1.4rem;font-weight:700;color:#f472b6">7</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-top:2px">Sets</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:1.4rem;font-weight:700;color:#fb923c">0.41</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-top:2px">Atk Eff</div>
+          </div>
+        </div>
+
+        <!-- Zone activity -->
+        <div style="padding:14px 24px;border-bottom:1px solid rgba(255,255,255,0.07)">
+          <p style="font-size:0.75rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px">Court Zone Activity</p>
+          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">
+            <div style="text-align:center">
+              <div style="height:32px;background:#3b82f6;border-radius:4px 4px 0 0;opacity:0.4"></div>
+              <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);margin-top:3px">Z1</div>
+            </div>
+            <div style="text-align:center">
+              <div style="height:52px;background:#3b82f6;border-radius:4px 4px 0 0;opacity:0.7"></div>
+              <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);margin-top:3px">Z2</div>
+            </div>
+            <div style="text-align:center">
+              <div style="height:68px;background:#3b82f6;border-radius:4px 4px 0 0;opacity:1"></div>
+              <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);margin-top:3px">Z3</div>
+            </div>
+            <div style="text-align:center">
+              <div style="height:40px;background:#3b82f6;border-radius:4px 4px 0 0;opacity:0.55"></div>
+              <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);margin-top:3px">Z4</div>
+            </div>
+            <div style="text-align:center">
+              <div style="height:24px;background:#3b82f6;border-radius:4px 4px 0 0;opacity:0.3"></div>
+              <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);margin-top:3px">Z5</div>
+            </div>
+            <div style="text-align:center">
+              <div style="height:16px;background:#3b82f6;border-radius:4px 4px 0 0;opacity:0.2"></div>
+              <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);margin-top:3px">Z6</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent actions -->
+        <div style="padding:14px 24px">
+          <p style="font-size:0.75rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px">Recent Actions</p>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem">
+              <span style="color:rgba(255,255,255,0.7)">Attack</span>
+              <span style="color:#4ade80;font-size:0.75rem">✓ Kill</span>
+              <span style="color:rgba(255,255,255,0.35)">8:21</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem">
+              <span style="color:rgba(255,255,255,0.7)">Block</span>
+              <span style="color:#fbbf24;font-size:0.75rem">— Neutral</span>
+              <span style="color:rgba(255,255,255,0.35)">7:44</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem">
+              <span style="color:rgba(255,255,255,0.7)">Serve</span>
+              <span style="color:#f87171;font-size:0.75rem">✗ Error</span>
+              <span style="color:rgba(255,255,255,0.35)">6:52</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:24px;text-align:center;color:var(--text-muted)">Does this section look right? Reply in terminal ↓</p>

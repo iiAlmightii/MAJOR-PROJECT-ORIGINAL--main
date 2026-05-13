@@ -1,6 +1,5 @@
 train: ../train/images
-val: ../valid/images
-test: ../test/images
+val: ../train/images
 
 nc: 6
 names: ['blocking', 'digging', 'passing', 'serving', 'setting', 'spiking']

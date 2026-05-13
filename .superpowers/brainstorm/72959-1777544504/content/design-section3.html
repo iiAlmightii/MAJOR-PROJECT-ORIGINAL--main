@@ -1,0 +1,80 @@
+<h2>Design — Section 3 of 3: Court Map Accuracy</h2>
+<p class="subtitle">Auto-calibrate by default + manual corner override if result looks wrong</p>
+
+<div class="section">
+  <h3>3A — Improved Auto-Calibration <span class="label" style="margin-left:8px">homography_service.py</span></h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Problem today</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">Hough line detection on the first keyframe only. Broadcast overlays (score bugs, logos) and audience rows confuse the line detector, producing a skewed homography matrix.</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Fix</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">Sample <strong>5 keyframes</strong> spread across the first 30 seconds instead of just frame 1. Compute homography for each, then pick the one with the <strong>lowest reprojection error</strong> (most self-consistent line intersections). Robustly rejects frames with overlays/blurs.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>3B — Manual Corner Override UI <span class="label" style="margin-left:8px">new: CourtCalibrationModal</span></h3>
+  <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08);margin-bottom:12px">
+    <p style="font-size:0.88rem;line-height:1.7">A <strong>"Fix Court Map"</strong> button appears in the match detail header (admin/coach only). Clicking it opens a calibration modal that shows the first clean frame of the video. The user clicks 4 court corners in order: <strong>top-left → top-right → bottom-right → bottom-left</strong>. Each click places a colored dot. Once all 4 are placed, "Apply" sends them to the existing <code>POST /api/matches/{id}/homography</code> endpoint. The map updates immediately on the next tracking poll.</p>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Court Calibration Modal — Wireframe</div>
+    <div class="mockup-body">
+      <div style="background:#0d1117;border-radius:10px;padding:20px;max-width:520px;margin:0 auto;border:1px solid rgba(255,255,255,0.1)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div>
+            <div style="font-size:1rem;font-weight:600;color:white">Fix Court Map</div>
+            <div style="font-size:0.78rem;color:rgba(255,255,255,0.4);margin-top:2px">Click the 4 court corners in order</div>
+          </div>
+          <span style="color:rgba(255,255,255,0.4);cursor:pointer">✕</span>
+        </div>
+
+        <!-- Corner instruction pills -->
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <span style="background:#22c55e;color:white;padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:600">1 Top-Left ✓</span>
+          <span style="background:#3b82f6;color:white;padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:600">2 Top-Right ✓</span>
+          <span style="background:#f59e0b;color:white;padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:500">3 Bottom-Right ←</span>
+          <span style="background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.4);padding:3px 10px;border-radius:12px;font-size:0.75rem">4 Bottom-Left</span>
+        </div>
+
+        <!-- Video frame placeholder with dots -->
+        <div style="position:relative;background:#111827;border-radius:8px;aspect-ratio:16/9;overflow:hidden;border:1px solid rgba(255,255,255,0.08);cursor:crosshair">
+          <!-- Simulated court lines -->
+          <div style="position:absolute;inset:15% 10%;border:2px solid rgba(255,255,255,0.15);border-radius:2px"></div>
+          <div style="position:absolute;left:10%;right:10%;top:50%;height:2px;background:rgba(255,255,255,0.1)"></div>
+          <!-- Placed dots -->
+          <div style="position:absolute;left:10%;top:15%;width:12px;height:12px;border-radius:50%;background:#22c55e;transform:translate(-50%,-50%);box-shadow:0 0 8px #22c55e"></div>
+          <div style="position:absolute;left:90%;top:15%;width:12px;height:12px;border-radius:50%;background:#3b82f6;transform:translate(-50%,-50%);box-shadow:0 0 8px #3b82f6"></div>
+          <!-- Pending dot (pulsing) -->
+          <div style="position:absolute;left:90%;top:85%;width:12px;height:12px;border-radius:50%;background:#f59e0b;transform:translate(-50%,-50%);box-shadow:0 0 8px #f59e0b;opacity:0.5"></div>
+          <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:0.72rem;color:rgba(255,255,255,0.3)">Click bottom-right corner</div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;margin-top:12px">
+          <button style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);padding:7px 16px;border-radius:6px;font-size:0.82rem;cursor:pointer">Reset</button>
+          <button style="background:rgba(59,130,246,0.3);border:1px solid #3b82f6;color:#93c5fd;padding:7px 16px;border-radius:6px;font-size:0.82rem;cursor:pointer;opacity:0.5">Apply (2 more needed)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>3C — Mini-map Rendering Fix <span class="label" style="margin-left:8px">VideoPlayer.jsx</span></h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Problem today</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">Mini-map draws players using raw <code>court_x/y</code> which is unreliable when homography fails. No visual indicator that calibration may be off. Players clamp to [0,1] silently.</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Fix</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">Color-code dots by team (blue/red, matching overlay). Show player display number inside dot. Add a small ⚠ badge on the mini-map if &gt;30% of players have <code>null</code> court coords — signals bad calibration to the user so they know to use "Fix Court Map".</p>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:24px;text-align:center;color:var(--text-muted)">Does this section look right? Reply in terminal ↓</p>

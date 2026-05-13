@@ -1,0 +1,80 @@
+<h2>Design — Section 1 of 3: Tracking Fix</h2>
+<p class="subtitle">Approach B: Parameter tuning + post-processing track merger + re-analyze trigger</p>
+
+<div class="section">
+  <h3>1A — ByteTrack Parameter Changes <span class="label" style="margin-left:8px">player_tracker.py</span></h3>
+  <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:0.9rem">
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.1)">
+      <th style="text-align:left;padding:8px 12px;color:var(--text-muted)">Parameter</th>
+      <th style="text-align:left;padding:8px 12px;color:var(--text-muted)">Old</th>
+      <th style="text-align:left;padding:8px 12px;color:var(--text-muted)">New</th>
+      <th style="text-align:left;padding:8px 12px;color:var(--text-muted)">Why</th>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.06)">
+      <td style="padding:8px 12px"><code>lost_track_buffer</code></td>
+      <td style="padding:8px 12px;color:#f87171">30 frames (~1.5s)</td>
+      <td style="padding:8px 12px;color:#4ade80">120 frames (~6s)</td>
+      <td style="padding:8px 12px">Players can be off-camera during timeouts/rotations</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.06)">
+      <td style="padding:8px 12px"><code>minimum_matching_threshold</code></td>
+      <td style="padding:8px 12px;color:#f87171">0.8</td>
+      <td style="padding:8px 12px;color:#4ade80">0.65</td>
+      <td style="padding:8px 12px">Allows matching through partial occlusion</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.06)">
+      <td style="padding:8px 12px"><code>track_activation_threshold</code></td>
+      <td style="padding:8px 12px;color:#f87171">0.45</td>
+      <td style="padding:8px 12px;color:#4ade80">0.50</td>
+      <td style="padding:8px 12px">Reduces false-positive detections from audience/scoreboard</td>
+    </tr>
+    <tr>
+      <td style="padding:8px 12px"><strong>Max tracks hard cap</strong></td>
+      <td style="padding:8px 12px;color:#f87171">None</td>
+      <td style="padding:8px 12px;color:#4ade80">16</td>
+      <td style="padding:8px 12px">12 players + 2 refs + 2 coaches — hard ceiling</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>1B — Post-processing Track Merger <span class="label" style="margin-left:8px">new: track_merger.py</span></h3>
+  <p style="color:var(--text-muted);margin-bottom:12px">Runs once after full pipeline completes. Merges ghost tracks into their real parent.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Step 1 — Merge candidates</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">For every pair of Player UUIDs, check 3 conditions:<br>
+      ✓ Same team<br>
+      ✓ Time ranges don't overlap (one ends before other begins)<br>
+      ✓ Spatial gap ≤ 0.25 court units (foot positions close)</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Step 2 — Merge + consolidate</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">Re-assign all tracking rows, actions, and analytics from ghost UUID → parent UUID. Delete ghost Player record. Stats accumulate correctly on the surviving player.</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Step 3 — Prune overflow</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">If still &gt;16 players after merge, rank by total frames detected. Keep top 16, delete the rest (these are noise detections with very few frames).</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Step 4 — Stable display IDs</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">Assign sequential display numbers: Team A → #1–#6, Team B → #7–#12, ranked by first-seen frame. Stored as <code>display_number</code> on Player model. Shown in overlay instead of UUID.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>1C — Re-analyze Trigger</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Backend</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7"><code>POST /api/matches/{id}/reanalyze</code><br><br>Clears: player_tracking, ball_tracking, players, actions, analytics, rallies rows for this match. Resets match status → "pending". Fires CV pipeline in background. Progress via existing WebSocket.</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,0.08)">
+      <p class="label">Frontend</p>
+      <p style="margin-top:8px;font-size:0.88rem;line-height:1.7">"Re-analyze" button in match detail header (admin/coach only). Confirmation dialog: "This will delete all existing tracking data and re-run analysis. Continue?" Shows existing WebSocket progress bar during re-run.</p>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:24px;text-align:center;color:var(--text-muted)">Does this section look right? Reply in terminal ↓</p>

@@ -51,3 +51,5 @@ Dataset/*/*
 !Dataset/*/data.yaml
 
 Action recognition 3.zip
+/best.pt
+/last.pt
